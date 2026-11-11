@@ -1,18 +1,22 @@
 # Infinite Canvas
 
-A browser-based infinite drawing canvas. Cloud sync uses Supabase email/password accounts; each account's canvases are private.
+A browser-based infinite drawing canvas. Cloud sync uses Google sign-in through Supabase; each account's canvases are private.
 
 ## Run it
 
-1. Configure the Supabase table below and enable Email under **Authentication → Providers**.
+1. Configure Google sign-in and the Supabase table below.
 2. Serve this folder over HTTP. For example, from this folder run `py -m http.server 8000`, then open `http://localhost:8000` in a modern browser.
-3. Create an account or sign in. Existing canvases in this browser are copied to the first signed-in account; canvases from that account then sync between devices.
+3. Continue with Google. Existing canvases in this browser are copied to the first signed-in account; canvases from that account then sync between devices.
 
 The app also keeps a local IndexedDB copy for fast loading and migration. Browser private mode, clearing site data, or uninstalling/resetting the browser can erase that local copy. The Supabase account copy remains available after signing back in.
 
 ## Supabase setup
 
-The browser app is configured with the project URL and public publishable key. These are intended for client-side use; never put a `service_role` or secret key in this file. In the Supabase Dashboard, enable the Email provider and run this SQL once in **SQL Editor**:
+The browser app is configured with the project URL and public publishable key. These are intended for client-side use; never put a `service_role`, OAuth client secret, or other secret in this file.
+
+In the Google Cloud Console, create an OAuth client ID for a **Web application**. Add the Supabase callback URL (`https://<project-ref>.supabase.co/auth/v1/callback`) to its authorized redirect URIs. In Supabase, open **Authentication → Sign In / Providers → Google**, enable Google, and enter the Google client ID and client secret there.
+
+In **Authentication → URL Configuration**, set the Site URL to the address used to open the app and add it to the Redirect URLs allow list (for the example above, `http://localhost:8000/**`). Configure any deployed app URL there as well. Run this SQL once in **SQL Editor**:
 
 ```sql
 create table if not exists public.canvases (
@@ -47,14 +51,12 @@ create policy "Users can delete their own canvases"
   using ((select auth.uid()) = owner_id);
 ```
 
-In **Authentication → URL Configuration**, add the address you use to open the app to the allowed redirect URLs (for the example above, `http://localhost:8000/**`) and set the matching Site URL. Email confirmation may be required by the project's Authentication settings.
-
 Row-level security restricts every table operation to the signed-in owner. Room codes are saved privately with each canvas, but room-link access is intentionally disabled: a link does not grant another user permission to read or edit a canvas.
 
 ## Controls
 
 - Canvases: sign in, then enter your display name if prompted. Open Canvases to create a canvas, switch canvases, or view square previews. The empty library has a plus tile that creates a canvas, opens it, and asks for its name. Press and hold a canvas tile to select it; select multiple tiles to delete them, or select one to rename it.
-- Accounts: enter an email and password on the single account screen. The app tries to sign in first and creates an account if the credentials are not recognized. If email confirmation is enabled, confirm the new account by email and then continue with the same credentials. Sign out from the canvas library. On the first sign-in, canvases already stored in this browser are migrated to that account.
+- Accounts: use **Continue with Google**. Sign out from the canvas library. On the first sign-in, canvases already stored in this browser are migrated to that Google account.
 - Share: create a link with an automatic room code. Until room access and multiplayer are implemented, the link is a placeholder and cannot be used by other people to view or edit the canvas.
 - Draw: drag with mouse, finger, or stylus.
 - Paint tools: click the bottom-center tool circle to reveal the fixed tool row. Select a drawing tool, then click it again to open its settings. Pen, Marker, Highlighter, Calligraphy, and Flat Pencil keep their own size, color, and fill settings; Highlighter also has a transparency slider. Shader smudges colors from the canvas. New strokes keep their on-screen size as you zoom; older saved strokes keep their original zoom behavior.

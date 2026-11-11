@@ -222,23 +222,13 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111318;col
     <section id="canvasLibrary" class="canvas-library" aria-label="Canvas library" hidden>
       <div class="canvas-library-panel">
         <div id="authPanel" class="auth-panel" hidden>
-          <div id="authEntry">
+          <div>
             <h1>Sign in to sync canvases</h1>
-            <p>Cloud canvases are private to your account. Room links do not grant access.</p>
-            <form id="authForm">
-              <label for="authEmail">Email</label>
-              <input id="authEmail" type="email" autocomplete="email" required>
-              <label for="authPassword">Password</label>
-              <input id="authPassword" type="password" autocomplete="current-password" minlength="6" required>
-              <p id="authMessage" class="auth-message" role="status"></p>
-              <div class="library-actions">
-                <button id="authSubmit" class="library-button primary" type="submit">Continue</button>
-              </div>
-            </form>
-          </div>
-          <div id="authConfirmation" hidden>
-            <h1>Account created</h1>
-            <p>Check your email to confirm it, then continue with the same email and password.</p>
+            <p>Sign in with Google to sync your private canvases. Room links do not grant access.</p>
+            <p id="authMessage" class="auth-message" role="status"></p>
+            <div class="library-actions">
+              <button id="googleSignIn" class="library-button primary" type="button">Continue with Google</button>
+            </div>
           </div>
         </div>
         <div id="cloudSetupPanel" class="cloud-setup-panel" hidden>
@@ -355,13 +345,8 @@ const canvasNameInput = document.getElementById('canvasNameInput');
 const cancelCanvasNameButton = document.getElementById('cancelCanvasName');
 const saveCanvasNameButton = document.getElementById('saveCanvasName');
 const authPanel = document.getElementById('authPanel');
-const authEntry = document.getElementById('authEntry');
-const authConfirmation = document.getElementById('authConfirmation');
-const authForm = document.getElementById('authForm');
-const authEmailInput = document.getElementById('authEmail');
-const authPasswordInput = document.getElementById('authPassword');
 const authMessage = document.getElementById('authMessage');
-const authSubmitButton = document.getElementById('authSubmit');
+const googleSignInButton = document.getElementById('googleSignIn');
 const cloudSetupPanel = document.getElementById('cloudSetupPanel');
 const cloudSetupMessage = document.getElementById('cloudSetupMessage');
 const retryCloudSetupButton = document.getElementById('retryCloudSetup');
@@ -718,34 +703,20 @@ async function startCloudSession(session){
     setStatus(cloudSyncError);
   }
 }
-async function submitAuthForm(event){
-  event.preventDefault();
-  authSubmitButton.disabled=true;
-  authMessage.textContent='Signing in…';
+async function signInWithGoogle(){
+  googleSignInButton.disabled=true;
+  authMessage.textContent='Opening Google sign-in…';
   try{
-    const credentials={email:authEmailInput.value.trim(),password:authPasswordInput.value};
-    let {data,error}=await cloudClient.auth.signInWithPassword(credentials);
-    if(error){
-      const invalidCredentials=error.code==='invalid_credentials'||/invalid login credentials/i.test(error.message||'');
-      if(!invalidCredentials)throw error;
-      authMessage.textContent='No matching sign-in. Creating an account…';
-      ({data,error}=await cloudClient.auth.signUp(credentials));
-      if(error)throw error;
-      if(!data.session&&data.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0){
-        throw new Error('This email already has an account, but the password did not match.');
-      }
-    }
-    if(data.session){
-      authMessage.textContent='Signed in. Syncing your canvases…';
-      await startCloudSession(data.session);
-    }else{
-      authEntry.hidden=true;
-      authConfirmation.hidden=false;
-    }
+    const redirectTo=new URL(location.href);
+    redirectTo.hash='';
+    const {error}=await cloudClient.auth.signInWithOAuth({
+      provider:'google',
+      options:{redirectTo:redirectTo.href}
+    });
+    if(error)throw error;
   }catch(error){
-    authMessage.textContent=`Could not sign in or create an account: ${error.message}`;
-  }finally{
-    authSubmitButton.disabled=false;
+    authMessage.textContent=`Could not start Google sign-in: ${error.message}`;
+    googleSignInButton.disabled=false;
   }
 }
 async function retryCloudSetup(){
@@ -1911,7 +1882,7 @@ canvasMenuToggle.onclick=async()=>{
   showCanvasLibrary();
 };
 closeCanvasLibrary.onclick=()=>{if(activeDocumentKey){canvasLibrary.hidden=true;canvasMenuToggle.setAttribute('aria-expanded','false');}};
-authForm.addEventListener('submit',submitAuthForm);
+googleSignInButton.onclick=signInWithGoogle;
 retryCloudSetupButton.onclick=retryCloudSetup;
 signOutButton.onclick=signOut;
 signOutFromLibraryButton.onclick=signOut;
