@@ -7,6 +7,8 @@
   <title>Infinite Canvas</title>
   <style>
 *{box-sizing:border-box}
+*{scrollbar-width:none;-ms-overflow-style:none}
+*::-webkit-scrollbar{display:none;width:0;height:0}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:none;background:#111318;color:#e9edf4;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
 #app{position:relative;width:100%;height:100%;overflow:hidden;overscroll-behavior:none}
 #canvas{display:block;width:100%;height:100%;touch-action:none;cursor:none;background-color:#f7f8fa}
@@ -62,19 +64,24 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:no
 .theme-toggle:focus-visible{outline:2px solid #9db0ff;outline-offset:2px}
 .saved-locations-toggle{position:absolute;z-index:5;top:96px;left:18px;padding:8px 11px;border:1px solid #ffffff24;border-radius:9px;background:#171a22dd;color:#e9edf4;font:inherit;font-size:12px;cursor:pointer;backdrop-filter:blur(12px)}
 .saved-locations-toggle:hover,.saved-locations-toggle[aria-expanded=true]{background:#252a36}
-.saved-locations-panel{position:absolute;z-index:6;top:136px;left:18px;width:min(320px,calc(100vw - 36px));max-height:min(65vh,480px);overflow:auto;padding:14px;border:1px solid #ffffff24;border-radius:12px;background:#171a22ed;color:#e9edf4;box-shadow:0 8px 30px #0003;backdrop-filter:blur(12px)}
+.saved-locations-panel{position:absolute;z-index:6;top:136px;left:18px;width:min(320px,calc(100vw - 36px));max-height:calc(100vh - 152px);max-height:calc(100dvh - 152px);overflow-y:auto;overscroll-behavior:contain;padding:14px;border:1px solid #ffffff24;border-radius:12px;background:#171a22ed;color:#e9edf4;box-shadow:0 8px 30px #0003;backdrop-filter:blur(12px)}
 .saved-locations-panel[hidden]{display:none}
 .saved-locations-panel h2{margin:0 0 12px;font-size:14px}
-.saved-locations-list{display:grid;gap:6px;margin-bottom:12px}
+.saved-locations-list{display:grid;gap:6px;margin-bottom:0}
 .saved-location-item{display:flex;align-items:center;gap:6px}
+.saved-location-item.is-dragging{opacity:.55}
+.saved-location-drag-ghost{position:fixed;z-index:1000;pointer-events:none;opacity:.98;box-shadow:0 12px 30px #0008}
+.saved-location-item .saved-location-drag-handle{display:grid;flex:none;place-items:center;width:30px;height:30px;padding:7px;border:1px solid #ffffff24;border-radius:7px;background:#252a36;color:#c8ceda;cursor:grab;touch-action:none;user-select:none}
+.saved-location-item .saved-location-drag-handle:active{cursor:grabbing}
+.saved-location-drag-handle svg{display:block;width:14px;height:16px;fill:currentColor}
 .saved-location-item .location-go{flex:1;overflow:hidden;text-align:left;text-overflow:ellipsis;white-space:nowrap}
 .saved-location-empty{margin:0 0 12px;color:#c8ceda;font-size:12px}
-.location-name-label{display:block;margin-bottom:5px;color:#c8ceda;font-size:11px}
-.location-save-row{display:flex;gap:6px}
+.location-name-label{display:block;margin:10px 0 5px;color:#c8ceda;font-size:11px}
+.location-save-row{display:flex;gap:6px;margin-bottom:12px}
 .location-save-row input{min-width:0;flex:1;padding:7px 8px;border:1px solid #ffffff24;border-radius:7px;background:#252a36;color:#f5f6fa;font:inherit;font-size:12px}
 .location-save-row button{white-space:nowrap}
 .help{position:absolute;left:18px;bottom:92px;padding:8px 11px;border-radius:9px;background:#171a22dd;color:#cbd1dc;font-size:12px;pointer-events:none}
-.zoom{position:absolute;right:18px;bottom:72px;padding:8px 11px;border-radius:9px;background:#171a22dd;color:#e9edf4;font-size:12px;font-variant-numeric:tabular-nums}
+#zoomLabel{display:none}
 #status{position:absolute;top:58px;left:18px;padding:6px 9px;border-radius:8px;background:#171a22d9;color:#d7deeb;font-size:11px;pointer-events:none}
 .canvas-menu-toggle{position:absolute;z-index:5;top:18px;left:18px;padding:8px 11px;border:1px solid #ffffff24;border-radius:9px;background:#171a22dd;color:#e9edf4;font:inherit;font-size:12px;cursor:pointer;backdrop-filter:blur(12px)}
 .canvas-menu-toggle:hover{background:#252a36}
@@ -84,7 +91,6 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:no
 .canvas-library{position:absolute;inset:0;z-index:20;display:grid;place-items:center;padding:24px;background:#0d0f14eF;backdrop-filter:blur(10px)}
 .canvas-library[hidden]{display:none}
 .canvas-library-panel{width:min(920px,100%);max-height:min(90vh,900px);overflow:auto;padding:24px;border:1px solid #ffffff24;border-radius:18px;background:#171a22;color:#e9edf4;box-shadow:0 20px 70px #0008}
-.canvas-library-panel.auth-only{display:grid;place-items:center;width:min(380px,calc(100vw - 32px));aspect-ratio:1;max-height:calc(100vh - 32px);padding:28px}
 .canvas-library h1{margin:0;font-size:24px}
 .canvas-library p{color:#b9c0cd}
 .library-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
@@ -95,45 +101,56 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:no
 .library-button:disabled{opacity:.42;cursor:default}
 .canvas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
 .canvas-card{min-width:0;padding:8px;border:1px solid #ffffff24;border-radius:12px;background:#20232c;color:#f5f6fa;text-align:left;cursor:pointer;touch-action:manipulation;user-select:none}
-.canvas-card:hover,.canvas-card.selected{border-color:#8da0ff;background:#282e40}
-.canvas-card.selected{box-shadow:0 0 0 2px #526ee8}
-.canvas-card-preview{display:block;width:100%;aspect-ratio:1;border-radius:7px;background:#f7f8fa}
+.canvas-card:hover{border-color:#8da0ff;background:#282e40}
+.canvas-card-visual{position:relative;display:block;width:100%;aspect-ratio:1;overflow:hidden;border-radius:7px;background:#f7f8fa}
+.canvas-card-preview{display:block;width:100%;height:100%;background:#f7f8fa}
+.saved-location-preview{position:absolute;top:4px;left:4px;display:flex;flex-direction:column;gap:2px;max-width:calc(100% - 8px);overflow:hidden;pointer-events:none}
+.saved-location-preview-item{max-width:100%;overflow:hidden;padding:2px 5px;border-radius:4px;background:#111822d9;color:#fff;text-overflow:ellipsis;white-space:nowrap;font-size:10px;line-height:14px}
 .canvas-card-name{display:block;overflow:hidden;padding:8px 2px 2px;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
-.empty-canvas-card{display:block;width:100%;padding:8px;border:1px dashed #ffffff30;border-radius:12px;background:#20232c;color:#aeb6c5;text-align:left;cursor:context-menu;touch-action:manipulation;user-select:none}
-.empty-canvas-preview{display:grid;place-items:center;width:100%;aspect-ratio:1;border-radius:7px;background:#555b66}
-.empty-canvas-label{display:block;padding:8px 2px 2px;font-size:12px}
+.create-canvas-card{display:block;width:100%;padding:8px;border:1px dashed #ffffff30;border-radius:12px;background:#20232c;color:#aeb6c5;text-align:left;cursor:pointer;touch-action:manipulation}
+.create-canvas-card:hover{border-color:#8da0ff;background:#282e40}
+.create-canvas-preview{display:grid;place-items:center;width:100%;aspect-ratio:1;border-radius:7px;background:#555b66;color:#e9edf4;font-size:64px;font-weight:300;line-height:1}
+.create-canvas-label{display:block;padding:8px 2px 2px;font-size:12px}
 .canvas-context-menu{position:absolute;z-index:30;min-width:176px;padding:5px;border:1px solid #ffffff24;border-radius:10px;background:#20232c;color:#f5f6fa;box-shadow:0 12px 32px #0008}
 .canvas-context-menu[hidden]{display:none}
 .canvas-context-menu button{display:block;width:100%;padding:9px 10px;border:0;border-radius:6px;background:transparent;color:inherit;text-align:left;font:inherit;font-size:13px;cursor:pointer}
 .canvas-context-menu button:hover,.canvas-context-menu button:focus-visible{outline:none;background:#343b4c}
-.name-setup{max-width:480px;margin:auto}
-.name-setup label,.canvas-name-dialog label{display:block;margin:16px 0 6px;color:#c8ceda;font-size:13px}
-.name-setup input,.canvas-name-dialog input{width:100%;padding:11px;border:1px solid #ffffff30;border-radius:9px;background:#252a36;color:#f5f6fa;font:inherit}
+.canvas-name-dialog label{display:block;margin:16px 0 6px;color:#c8ceda;font-size:13px}
+.canvas-name-dialog input{width:100%;padding:11px;border:1px solid #ffffff30;border-radius:9px;background:#252a36;color:#f5f6fa;font:inherit}
 .canvas-name-overlay{position:absolute;inset:0;z-index:22;display:grid;place-items:center;padding:16px;background:#0d0f14bf;backdrop-filter:blur(5px)}
 .canvas-name-overlay[hidden]{display:none}
 .canvas-name-dialog{width:min(400px,100%);padding:20px;border:1px solid #ffffff24;border-radius:14px;background:#20232c;box-shadow:0 20px 70px #0009}
 .canvas-name-dialog[hidden]{display:none}
 .canvas-name-dialog h2{margin:0;font-size:18px}
 .canvas-name-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
-.auth-panel{max-width:480px;margin:auto}
-.auth-panel h1{margin-bottom:8px}
-.auth-panel label{display:block;margin:16px 0 6px;color:#c8ceda;font-size:13px}
-.auth-panel input{width:100%;padding:11px;border:1px solid #ffffff30;border-radius:9px;background:#252a36;color:#f5f6fa;font:inherit}
-.auth-message{min-height:1.4em;color:#c8ceda;font-size:13px}
-.cloud-setup-panel{max-width:560px;margin:32px auto}
+.duplicate-name-overlay{position:absolute;inset:0;z-index:24;display:grid;place-items:center;padding:16px;background:#0d0f14bf;backdrop-filter:blur(5px)}
+.duplicate-name-overlay[hidden]{display:none}
+.duplicate-name-dialog{width:min(720px,100%);max-height:min(90vh,760px);overflow:auto;padding:20px;border:1px solid #ffffff24;border-radius:14px;background:#20232c;box-shadow:0 20px 70px #0009}
+.duplicate-name-dialog h2{margin:0;font-size:18px}
+.duplicate-name-dialog p{color:#c8ceda;font-size:13px}
+.duplicate-canvas-choices{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;max-height:55vh;overflow:auto}
+.duplicate-canvas-option{min-width:0;padding:7px;border:1px solid #ffffff24;border-radius:10px;background:#171a22;color:#f5f6fa;text-align:left;cursor:pointer}
+.duplicate-canvas-option[aria-pressed=true]{border-color:#8da0ff;box-shadow:0 0 0 2px #526ee8}
+.duplicate-canvas-option-name{display:block;overflow:hidden;padding-top:6px;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
 .share-overlay{position:absolute;inset:0;z-index:23;display:grid;place-items:center;padding:16px;background:#0d0f14bf;backdrop-filter:blur(5px)}
 .share-overlay[hidden]{display:none}
-.share-dialog{width:min(460px,100%);padding:20px;border:1px solid #ffffff24;border-radius:14px;background:#20232c;box-shadow:0 20px 70px #0009}
+.share-dialog{width:min(620px,100%);max-height:min(92vh,900px);overflow:auto;padding:20px;border:1px solid #ffffff24;border-radius:14px;background:#20232c;box-shadow:0 20px 70px #0009}
 .share-dialog h2{margin:0 0 8px;font-size:18px}
-.share-dialog p{color:#c8ceda;font-size:13px}
-.share-dialog input{width:100%;padding:10px;border:1px solid #ffffff30;border-radius:9px;background:#252a36;color:#f5f6fa;font:inherit}
+.share-dialog p{color:#c8ceda;font-size:13px;line-height:1.5}
+.peer-status{min-height:1.4em;font-weight:600}
+.peer-mode-tabs{display:flex;gap:8px;margin:14px 0}
+.peer-panel{display:grid;gap:8px}
+.peer-panel[hidden]{display:none}
+.peer-panel label{margin-top:8px;color:#c8ceda;font-size:12px}
+.peer-panel textarea{width:100%;min-height:92px;resize:vertical;padding:10px;border:1px solid #ffffff30;border-radius:9px;background:#252a36;color:#f5f6fa;font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}
+.peer-panel button{justify-self:start}
 .canvas-library-hint{margin:0 0 10px;font-size:12px}
 .ruler{position:absolute;z-index:2;width:160vw;height:48px;pointer-events:none}
 .ruler[hidden]{display:none}
 .ruler-surface{position:relative;width:100%;height:100%;border:1px solid #323640;border-top:2px solid #526ee8;background:#ffffffc9;box-shadow:0 2px 9px #0003;pointer-events:auto;touch-action:none;cursor:grab}
 .ruler-surface:active{cursor:grabbing}
 .ruler-ticks{position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0,transparent 9px,#414653 10px,#414653 11px,transparent 12px,transparent 49px,#414653 50px,#414653 51px,transparent 52px,transparent 99px,#414653 100px,#414653 101px);opacity:.8}
-@media(max-width:700px){.tool-tray{--tool-size:clamp(32px,10.2vw,52px);--tool-gap:clamp(2px,.8vw,4px);bottom:18px;height:var(--tool-size)}.tool-tray.expanded{--tool-size:clamp(32px,10.2vw,52px);--tool-gap:clamp(2px,.8vw,4px);height:var(--tool-size);width:calc(50vw - 83px)}.tool-choice{height:var(--tool-size);padding:clamp(9px,2.7vw,13px)}.tool-settings{bottom:82px}.history-controls{right:8px;bottom:8px;gap:6px}.history-controls button{width:38px;height:38px;padding:9px}.help{left:8px;bottom:76px;max-width:64%;font-size:10px}.zoom{right:8px;bottom:56px}#status{top:50px;left:10px}.theme-toggle{top:10px;right:10px;padding:7px 9px;font-size:11px}.share-canvas-toggle{top:10px;right:106px;padding:7px 9px;font-size:11px}.canvas-menu-toggle{top:10px;left:10px;padding:7px 9px;font-size:11px}.saved-locations-toggle{top:82px;left:10px;padding:7px 9px;font-size:11px}.saved-locations-panel{top:120px;left:10px;width:min(320px,calc(100vw - 20px))}.canvas-library{padding:10px}.canvas-library-panel{padding:16px;max-height:96vh}.canvas-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}}
+@media(max-width:700px){.tool-tray{--tool-size:clamp(32px,10.2vw,52px);--tool-gap:clamp(2px,.8vw,4px);bottom:18px;height:var(--tool-size)}.tool-tray.expanded{--tool-size:clamp(32px,10.2vw,52px);--tool-gap:clamp(2px,.8vw,4px);height:var(--tool-size);width:calc(50vw - 83px)}.tool-choice{height:var(--tool-size);padding:clamp(9px,2.7vw,13px)}.tool-settings{bottom:82px}.history-controls{right:8px;bottom:8px;gap:6px}.history-controls button{width:38px;height:38px;padding:9px}.help{left:8px;bottom:76px;max-width:64%;font-size:10px}.zoom{right:8px;bottom:56px}#status{top:50px;left:10px}.theme-toggle{top:10px;right:10px;padding:7px 9px;font-size:11px}.share-canvas-toggle{top:10px;right:106px;padding:7px 9px;font-size:11px}.canvas-menu-toggle{top:10px;left:10px;padding:7px 9px;font-size:11px}.saved-locations-toggle{top:82px;left:10px;padding:7px 9px;font-size:11px}.saved-locations-panel{top:120px;left:10px;width:min(320px,calc(100vw - 20px));max-height:calc(100vh - 132px);max-height:calc(100dvh - 132px)}.canvas-library{padding:10px}.canvas-library-panel{padding:16px;max-height:96vh}.canvas-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}}
   </style>
 </head>
 <body>
@@ -205,65 +222,34 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:no
         <div class="ruler-ticks" aria-hidden="true"></div>
       </div>
     </div>
-    <div class="help">Drag to draw · Space + drag to move · Two fingers to pan/zoom/rotate ruler · Wheel to zoom · Autosaves to your account</div>
+    <div class="help">Drag to draw · Space + drag to move · Two fingers to pan/zoom/rotate ruler · Wheel to zoom · Autosaves in this browser</div>
     <div id="status" role="status">Starting…</div>
     <button id="savedLocationsToggle" class="saved-locations-toggle" type="button" aria-expanded="false" aria-controls="savedLocationsPanel">Saved locations</button>
     <section id="savedLocationsPanel" class="saved-locations-panel" aria-label="Saved locations" hidden>
       <h2>Saved locations</h2>
-      <div id="savedLocationsList" class="saved-locations-list"></div>
       <label class="location-name-label" for="locationName">Name this view</label>
       <div class="location-save-row">
         <input id="locationName" type="text" maxlength="60" placeholder="Location name">
         <button id="saveLocation" type="button">Save view</button>
       </div>
+      <div id="savedLocationsList" class="saved-locations-list"></div>
     </section>
     <button id="themeToggle" class="theme-toggle" type="button" aria-label="Dark mode" aria-pressed="false" title="Dark mode">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 15.5A8.5 8.5 0 0 1 8.5 3.8 8.5 8.5 0 1 0 20.2 15.5Z"/></svg>
       <span id="themeToggleLabel">Dark mode</span>
     </button>
     <button id="shareCanvas" class="share-canvas-toggle" type="button" disabled>Share</button>
-    <div class="zoom" id="zoomLabel">100%</div>
-    <button id="canvasMenuToggle" class="canvas-menu-toggle" type="button" aria-expanded="false" aria-controls="canvasLibrary">Canvases</button>
+    <button id="canvasMenuToggle" class="canvas-menu-toggle" type="button" aria-expanded="false" aria-controls="canvasLibrary">My canvases</button>
     <section id="canvasLibrary" class="canvas-library" aria-label="Canvas library" hidden>
       <div class="canvas-library-panel">
-        <div id="authPanel" class="auth-panel" hidden>
-          <div>
-            <h1>Sign in to sync canvases</h1>
-            <p>Sign in with Google to sync your private canvases. Room links do not grant access.</p>
-            <p id="authMessage" class="auth-message" role="status"></p>
-            <div class="library-actions">
-              <button id="googleSignIn" class="library-button primary" type="button">Continue with Google</button>
-            </div>
-          </div>
-        </div>
-        <div id="cloudSetupPanel" class="cloud-setup-panel" hidden>
-          <h1>Cloud storage setup needed</h1>
-          <p id="cloudSetupMessage">The account is signed in, but the private canvas table is unavailable.</p>
-          <p>Follow the Supabase SQL setup in README.md, then retry. Your existing local canvases are still in this browser.</p>
-          <div class="library-actions">
-            <button id="retryCloudSetup" class="library-button primary" type="button">Retry cloud setup</button>
-            <button id="signOut" class="library-button" type="button">Sign out</button>
-          </div>
-        </div>
-        <div id="nameSetup" class="name-setup" hidden>
-          <h1>Welcome</h1>
-          <p>What should I call you?</p>
-          <form id="displayNameForm">
-            <label for="displayNameInput">Your name</label>
-            <input id="displayNameInput" type="text" maxlength="60" autocomplete="name" required>
-            <div class="library-actions"><button class="library-button primary" type="submit">Continue</button></div>
-          </form>
-        </div>
-        <div id="libraryContent" hidden>
-          <div class="library-header"><h1 id="libraryGreeting">Your canvases</h1><div class="library-actions"><button id="signOutFromLibrary" class="library-button" type="button">Sign out</button><button id="closeCanvasLibrary" class="library-button" type="button">Back to canvas</button></div></div>
-          <div class="library-actions">
-            <button id="deleteCanvases" class="library-button" type="button" disabled>Delete selected</button>
-          </div>
-          <p class="canvas-library-hint">Click a canvas to open it. Right-click a canvas for actions. Press and hold tiles to select canvases for deletion.</p>
+        <div id="libraryContent">
+          <div class="library-header"><h1>My canvases</h1></div>
+          <p class="canvas-library-hint">Your canvases are saved in this browser. No sign-in or online account is needed. Share connects two open browsers directly without creating a cloud copy.</p>
+          <p class="canvas-library-hint">Click a canvas to open it. Right-click or press and hold a canvas for Rename and Delete actions. Press Escape or click outside this library to return to an open canvas.</p>
           <div id="canvasGrid" class="canvas-grid"></div>
           <div id="canvasContextMenu" class="canvas-context-menu" role="menu" aria-label="Canvas actions" hidden>
             <button id="contextRenameCanvas" type="button" role="menuitem">Rename canvas</button>
-            <button id="contextCreateCanvas" type="button" role="menuitem">Create canvas</button>
+            <button id="contextDeleteCanvas" type="button" role="menuitem">Delete</button>
           </div>
         </div>
       </div>
@@ -281,20 +267,51 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:no
         </form>
       </section>
     </div>
+    <div id="duplicateNameOverlay" class="duplicate-name-overlay" hidden>
+      <section class="duplicate-name-dialog" role="dialog" aria-modal="true" aria-labelledby="duplicateNameTitle">
+        <h2 id="duplicateNameTitle">A canvas already has this name</h2>
+        <p>Choose a canvas to replace, keep both, or cancel to edit the name.</p>
+        <div id="duplicateCanvasChoices" class="duplicate-canvas-choices"></div>
+        <div class="canvas-name-dialog-actions">
+          <button id="cancelDuplicateName" class="library-button" type="button">Cancel</button>
+          <button id="keepBothCanvases" class="library-button" type="button">Keep both</button>
+          <button id="replaceDuplicateCanvas" class="library-button primary" type="button">Replace selected</button>
+        </div>
+      </section>
+    </div>
     <div id="shareOverlay" class="share-overlay" hidden>
       <section class="share-dialog" role="dialog" aria-modal="true" aria-labelledby="shareDialogTitle">
-        <h2 id="shareDialogTitle">Canvas room link</h2>
-        <p>Anyone with this link can open and edit the canvas. Treat the link like a password and only share it with people you trust.</p>
-        <label for="shareLinkInput">Room link</label>
-        <input id="shareLinkInput" type="text" readonly>
+        <h2 id="shareDialogTitle">Share this canvas</h2>
+        <p>WebRTC connects browsers directly. Exchange these full codes privately; they contain connection details and network addresses. A free STUN server helps establish direct connections, but some networks require TURN and will not connect without a relay.</p>
+        <p id="peerStatus" class="peer-status" role="status">Not connected</p>
+        <div class="peer-mode-tabs" role="group" aria-label="Connection role">
+          <button id="hostModeTab" class="library-button primary" type="button" aria-pressed="true">Host</button>
+          <button id="guestModeTab" class="library-button" type="button" aria-pressed="false">Guest</button>
+        </div>
+        <section id="hostPeerPanel" class="peer-panel" aria-label="Host connection">
+          <button id="createOffer" class="library-button primary" type="button">Create invitation</button>
+          <label for="offerCode">Invitation code — send to guest</label>
+          <textarea id="offerCode" rows="5" readonly spellcheck="false"></textarea>
+          <button id="copyOfferCode" class="library-button" type="button" disabled>Copy invitation</button>
+          <label for="answerCode">Guest response code — paste here</label>
+          <textarea id="answerCode" rows="5" spellcheck="false" placeholder="Paste the guest's response code"></textarea>
+          <button id="connectAnswer" class="library-button primary" type="button" disabled>Connect</button>
+        </section>
+        <section id="guestPeerPanel" class="peer-panel" aria-label="Guest connection" hidden>
+          <label for="guestOfferCode">Host invitation code — paste here</label>
+          <textarea id="guestOfferCode" rows="5" spellcheck="false" placeholder="Paste the host's invitation code"></textarea>
+          <button id="createAnswer" class="library-button primary" type="button">Create response</button>
+          <label for="guestAnswerCode">Response code — send to host</label>
+          <textarea id="guestAnswerCode" rows="5" readonly spellcheck="false"></textarea>
+          <button id="copyAnswerCode" class="library-button" type="button" disabled>Copy response</button>
+        </section>
         <div class="canvas-name-dialog-actions">
+          <button id="disconnectPeer" class="library-button" type="button" hidden>Disconnect</button>
           <button id="closeShareDialog" class="library-button" type="button">Close</button>
-          <button id="copyShareLink" class="library-button primary" type="button">Share link</button>
         </div>
       </section>
     </div>
   </main>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
 (() => {
 'use strict';
@@ -302,7 +319,6 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:no
 const canvasEl = document.getElementById('canvas');
 const ctx = canvasEl.getContext('2d', { alpha: false, willReadFrequently: true });
 const statusEl = document.getElementById('status');
-const zoomLabel = document.getElementById('zoomLabel');
 const toolTray = document.getElementById('toolTray');
 const toolSettings = document.getElementById('toolSettings');
 const toolButtons = [...document.querySelectorAll('.tool-choice')];
@@ -336,49 +352,47 @@ const rulerEl = document.getElementById('ruler');
 const rulerSurface = document.getElementById('rulerSurface');
 const canvasMenuToggle = document.getElementById('canvasMenuToggle');
 const canvasLibrary = document.getElementById('canvasLibrary');
-const canvasLibraryPanel = document.querySelector('.canvas-library-panel');
-const nameSetup = document.getElementById('nameSetup');
-const displayNameForm = document.getElementById('displayNameForm');
-const displayNameInput = document.getElementById('displayNameInput');
 const libraryContent = document.getElementById('libraryContent');
-const libraryGreeting = document.getElementById('libraryGreeting');
 const canvasGrid = document.getElementById('canvasGrid');
-const closeCanvasLibrary = document.getElementById('closeCanvasLibrary');
-const deleteCanvasesButton = document.getElementById('deleteCanvases');
 const canvasContextMenu = document.getElementById('canvasContextMenu');
 const contextRenameCanvasButton = document.getElementById('contextRenameCanvas');
-const contextCreateCanvasButton = document.getElementById('contextCreateCanvas');
+const contextDeleteCanvasButton = document.getElementById('contextDeleteCanvas');
 const canvasNameDialog = document.getElementById('canvasNameDialog');
 const canvasNameDialogTitle = document.getElementById('canvasNameDialogTitle');
 const canvasNameForm = document.getElementById('canvasNameForm');
 const canvasNameInput = document.getElementById('canvasNameInput');
 const cancelCanvasNameButton = document.getElementById('cancelCanvasName');
 const saveCanvasNameButton = document.getElementById('saveCanvasName');
-const authPanel = document.getElementById('authPanel');
-const authMessage = document.getElementById('authMessage');
-const googleSignInButton = document.getElementById('googleSignIn');
-const cloudSetupPanel = document.getElementById('cloudSetupPanel');
-const cloudSetupMessage = document.getElementById('cloudSetupMessage');
-const retryCloudSetupButton = document.getElementById('retryCloudSetup');
-const signOutButton = document.getElementById('signOut');
-const signOutFromLibraryButton = document.getElementById('signOutFromLibrary');
+const duplicateNameOverlay = document.getElementById('duplicateNameOverlay');
+const duplicateCanvasChoices = document.getElementById('duplicateCanvasChoices');
+const cancelDuplicateNameButton = document.getElementById('cancelDuplicateName');
+const keepBothCanvasesButton = document.getElementById('keepBothCanvases');
+const replaceDuplicateCanvasButton = document.getElementById('replaceDuplicateCanvas');
 const shareCanvasButton = document.getElementById('shareCanvas');
 const shareOverlay = document.getElementById('shareOverlay');
-const shareLinkInput = document.getElementById('shareLinkInput');
-const copyShareLinkButton = document.getElementById('copyShareLink');
+const peerStatus = document.getElementById('peerStatus');
+const hostModeTab = document.getElementById('hostModeTab');
+const guestModeTab = document.getElementById('guestModeTab');
+const hostPeerPanel = document.getElementById('hostPeerPanel');
+const guestPeerPanel = document.getElementById('guestPeerPanel');
+const createOfferButton = document.getElementById('createOffer');
+const offerCodeInput = document.getElementById('offerCode');
+const copyOfferCodeButton = document.getElementById('copyOfferCode');
+const answerCodeInput = document.getElementById('answerCode');
+const connectAnswerButton = document.getElementById('connectAnswer');
+const guestOfferCodeInput = document.getElementById('guestOfferCode');
+const createAnswerButton = document.getElementById('createAnswer');
+const guestAnswerCodeInput = document.getElementById('guestAnswerCode');
+const copyAnswerCodeButton = document.getElementById('copyAnswerCode');
+const disconnectPeerButton = document.getElementById('disconnectPeer');
 const closeShareDialogButton = document.getElementById('closeShareDialog');
-const SUPABASE_URL = 'https://rsldrwnfgfworjpztcbt.supabase.co';
-const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_1qcvF3fu2laGbwjeUF1obg_4dnSbE3V';
-const CLOUD_TABLE = 'canvases';
-const SHARED_CANVAS_READ_RPC = 'get_shared_canvas';
-const SHARED_CANVAS_UPDATE_RPC = 'update_shared_canvas';
 const TOOL_ORDER = ['pen','marker','highlighter','eraser','lasso','calligraphy','pencil','shader','ruler'];
 const TOOL_LABELS = {pen:'Pen',marker:'Marker',highlighter:'Highlighter',eraser:'Eraser',lasso:'Lasso',calligraphy:'Calligraphy pen',pencil:'Flat pencil',shader:'Shader',ruler:'Ruler'};
 const DRAWING_TOOLS = ['pen','marker','highlighter','eraser','calligraphy','pencil','shader'];
 const ROTATABLE_TOOLS = ['highlighter','calligraphy','pencil'];
-const MIN_ZOOM = 1e-9;
-const MAX_ZOOM = 1e9;
-const DEFAULT_ZOOM = 0.5;
+const MIN_ZOOM = 1e-15;
+const MAX_ZOOM = 1e15;
+const DEFAULT_ZOOM = 0.0001;
 const CHUNK_SIZE = 1024;
 const MAX_INDEXED_CHUNKS_PER_STROKE = 256;
 const DB_NAME = 'InfiniteCanvasDB';
@@ -388,18 +402,25 @@ const LIBRARY_KEY = 'library';
 let activeDocumentKey = null;
 
 let db = null;
-let cloudClient = null;
-let authSession = null;
-let cloudReady = false;
-let cloudSyncError = '';
-let sharedRoomCode = null;
-let sharedRoomName = '';
 let libraryData = {displayName:'',canvases:[]};
-let selectedCanvasIds = new Set();
+let peerConnection = null;
+let peerChannel = null;
+let peerIsHost = false;
+let peerRole = 'host';
+let peerSetupGeneration = 0;
+let peerReady = false;
+let peerPreviousDocument = null;
+let peerPreviousDocumentKey = null;
+let peerSendQueue = [];
+let peerTransfers = new Map();
+let peerTransferSequence = 0;
 let contextCanvasEntry = null;
 let canvasHoldTimer = null;
 let canvasNameDialogMode = 'create';
 let canvasNameDialogTarget = null;
+let duplicateNameMatches = [];
+let duplicateNameSelectedId = null;
+let duplicateNameValue = '';
 let strokes = new Map();           // strokeId -> stroke data
 let chunks = new Map();            // "cx,cy" -> Set(strokeId)
 let largeStrokes = new Set();
@@ -410,18 +431,19 @@ let redoStack = [];
 let camera = { x: 0, y: 0, zoom: 1 };
 let tool = 'pen';
 let settings = {
-  pen: { color:'#202124', size:5, fill:false },
-  marker: { color:'#202124', size:12, fill:false },
+  pen: { color:'#000000', size:5, fill:false },
+  marker: { color:'#000000', size:12, fill:false },
   highlighter: { color:'#ffe85c', size:24, fill:false, transparency:50, rotation:0 },
   eraser: { size:16 },
-  calligraphy: { color:'#202124', size:8, fill:false, rotation:0 },
-  pencil: { color:'#202124', size:7, fill:false, rotation:0 },
+  calligraphy: { color:'#000000', size:8, fill:false, rotation:0 },
+  pencil: { color:'#000000', size:7, fill:false, rotation:0 },
   shader: { size:28 }
 };
 let worldFill = null;
 let trayExpanded = false;
-let darkMode = false;
+let darkMode = true;
 let savedLocations = [];
+let savedLocationReorder = null;
 let cursorPosition = null;
 let activeStroke = null;
 let activeLasso = null;
@@ -450,13 +472,28 @@ let dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 function setStatus(s) { statusEl.textContent = s; }
 function supportsRotation(name=tool) { return ROTATABLE_TOOLS.includes(name); }
 function normalizeAngle(degrees) { return ((degrees%360)+360)%360; }
-function displayColor(color) {
-  if(!darkMode||typeof color!=='string'||!/^#[0-9a-f]{6}$/i.test(color))return color;
+function updateShareButton(){
+  shareCanvasButton.disabled=!activeDocumentKey;
+  shareCanvasButton.textContent=peerReady?'Connected':'Share';
+}
+function displayColor(color,mode=darkMode) {
+  if(!mode||typeof color!=='string'||!/^#[0-9a-f]{6}$/i.test(color))return color;
   const red=parseInt(color.slice(1,3),16),green=parseInt(color.slice(3,5),16),blue=parseInt(color.slice(5,7),16);
   if(Math.max(red,green,blue)-Math.min(red,green,blue)>24)return color;
   if(Math.max(red,green,blue)<64)return '#f7f8fa';
   if(Math.min(red,green,blue)>220)return '#202124';
   return color;
+}
+function canvasBackgroundColor(mode=darkMode,fill=worldFill){
+  const base=displayColor('#f7f8fa',mode);
+  if(!fill||typeof fill.color!=='string'||!/^#[0-9a-f]{6}$/i.test(fill.color)||!Number.isFinite(Number(fill.opacity))||Number(fill.opacity)<=0)return base;
+  const color=displayColor(fill.color,mode);
+  const alpha=clamp(Number(fill.opacity),0,1);
+  const channels=[1,3,5].map(index=>Math.round(
+    parseInt(color.slice(index,index+2),16)*alpha+
+    parseInt(base.slice(index,index+2),16)*(1-alpha)
+  ));
+  return`#${channels.map(value=>value.toString(16).padStart(2,'0')).join('')}`;
 }
 function updateThemeUI() {
   themeToggle.setAttribute('aria-pressed',String(darkMode));
@@ -538,6 +575,7 @@ function addStroke(stroke, recordUndo=true) {
   if(recordUndo){
     undoStack.push({type:'add',stroke,worldFillBefore:stroke.worldFillBefore,worldFillAfter:stroke.worldFillAfter});
     redoStack=[];
+    peerSendMessage({type:'stroke:upsert',stroke,worldFill});
   }
   markDirty(); requestRender();updateButtons();
 }
@@ -546,6 +584,7 @@ function removeStroke(id, recordUndo=true) {
   unindexStroke(stroke); strokes.delete(id);strokeOrderDirty=true;
   if(selection)selection.ids=selection.ids.filter(selectedId=>selectedId!==id);
   if(recordUndo){undoStack.push({type:'remove',stroke});redoStack=[];}
+  if(recordUndo)peerSendMessage({type:'stroke:remove',id});
   markDirty(); requestRender();updateButtons();
 }
 function markDirty() {
@@ -560,50 +599,21 @@ function openDB() {
     req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
   });
 }
+function currentPayload(){
+  return{version:1,chunkSize:CHUNK_SIZE,strokes:Array.from(strokes.values()),camera,settings,worldFill,darkMode,savedLocations,updatedAt:Date.now()};
+}
 function saveToDB() {
   if(savePromise)return savePromise;
+  if(peerConnection&&!peerIsHost){dirty=false;return Promise.resolve(true);}
   if(!db || !dirty || !activeDocumentKey)return Promise.resolve(true);
   clearTimeout(saveTimer);saveTimer=null;
   const savedGeneration=changeGeneration;
-  const payload={version:1,chunkSize:CHUNK_SIZE,strokes:Array.from(strokes.values()),camera,settings,worldFill,darkMode,savedLocations,updatedAt:Date.now()};
+  const payload=currentPayload();
   const saveOperation=new Promise(resolve=>{
     try {
       const tx=db.transaction(STORE,'readwrite');
       tx.objectStore(STORE).put(payload,activeDocumentKey);
-      tx.oncomplete=async()=>{
-        if(sharedRoomCode){
-          try{
-            const {data:roomUpdated,error}=await cloudClient.rpc(SHARED_CANVAS_UPDATE_RPC,{
-              p_share_code:sharedRoomCode,
-              p_payload:payload
-            });
-            if(error)throw error;
-            if(roomUpdated!==true)throw new Error('This room link has been revoked.');
-            if(changeGeneration===savedGeneration){dirty=false;setStatus('Shared canvas saved');resolve(true);}
-            else{dirty=true;setStatus('New changes are waiting to sync');resolve(false);}
-          }catch(error){
-            dirty=true;setStatus(`Shared canvas save failed · ${error.message}`);
-            clearTimeout(saveTimer);
-            saveTimer=setTimeout(saveToDB,5000);
-            resolve(false);
-          }
-          return;
-        }
-        if(authSession&&cloudReady){
-          const entry=libraryData.canvases.find(item=>item.key===activeDocumentKey);
-          if(!entry){dirty=true;setStatus('Cloud save failed · active canvas is missing from your library');resolve(false);return;}
-          try{
-            await upsertCloudCanvas(entry,payload);
-            if(changeGeneration===savedGeneration){dirty=false;setStatus('Saved to cloud');resolve(true);}
-            else{dirty=true;setStatus('New changes are waiting to sync');resolve(false);}
-          }catch(error){
-            dirty=true;setStatus(`Cloud save failed · ${error.message}`);
-            clearTimeout(saveTimer);
-            saveTimer=setTimeout(saveToDB,5000);
-            resolve(false);
-          }
-          return;
-        }
+      tx.oncomplete=()=>{
         if(changeGeneration===savedGeneration){dirty=false;setStatus('Saved locally');resolve(true);}
         else{dirty=true;setStatus('New changes are waiting to save');resolve(false);}
       };
@@ -638,252 +648,88 @@ function makeCanvasId(){
 function emptyDocument(){
   return{version:1,chunkSize:CHUNK_SIZE,strokes:[],camera:{x:0,y:0,zoom:DEFAULT_ZOOM},settings:{},worldFill:null,darkMode:false,savedLocations:[]};
 }
-async function upsertCloudCanvas(entry,payload){
-  const {data:{session}}=await cloudClient.auth.getSession();
-  if(!session)throw new Error('Sign in again to continue syncing.');
-  authSession=session;
-  const {error}=await cloudClient.from(CLOUD_TABLE).upsert({
-    id:entry.id,
-    owner_id:session.user.id,
-    name:entry.name,
-    payload,
-    share_code:entry.shareCode||null,
-    updated_at:new Date(payload.updatedAt||Date.now()).toISOString()
-  },{onConflict:'owner_id,id'});
-  if(error)throw error;
-}
-function storeDocument(key,payload){
-  return new Promise((resolve,reject)=>{
-    try{
-      const tx=db.transaction(STORE,'readwrite');
-      tx.objectStore(STORE).put(payload,key);
-      tx.oncomplete=()=>resolve(true);
-      tx.onerror=()=>reject(tx.error);
-    }catch(error){reject(error);}
-  });
-}
-async function openSharedRoom(code){
-  if(!/^[A-Fa-f0-9]{10,64}$/.test(code))throw new Error('This room link has an invalid code.');
-  const {data,error}=await cloudClient.rpc(SHARED_CANVAS_READ_RPC,{p_share_code:code});
-  if(error)throw error;
-  const row=Array.isArray(data)?data[0]:data;
-  if(!row||typeof row.id!=='string'||typeof row.name!=='string'||!row.payload||typeof row.payload!=='object'){
-    throw new Error('This room was not found or its link has been disabled.');
-  }
-  const documentKey=`shared:${code}`;
-  await storeDocument(documentKey,row.payload);
-  sharedRoomCode=code;
-  sharedRoomName=row.name;
-  activeDocumentKey=documentKey;
-  restorePayload(row.payload);
-  camera={x:canvasEl.clientWidth/2,y:canvasEl.clientHeight/2,zoom:DEFAULT_ZOOM};
-  dirty=false;selection=null;activeStroke=null;
-  shareCanvasButton.disabled=true;
-  closeCanvasLibrary.disabled=false;
-  canvasLibrary.hidden=true;
-  canvasMenuToggle.setAttribute('aria-expanded','false');
-  setStatus(`Opened shared canvas · ${row.name}`);
-  requestRender();
-}
 async function loadLibrary(){
   const saved=await readStoredValue(LIBRARY_KEY);
   if(saved&&Array.isArray(saved.canvases)){
-    libraryData={displayName:typeof saved.displayName==='string'?saved.displayName.slice(0,60):'',canvases:saved.canvases.filter(item=>item&&typeof item.id==='string'&&typeof item.key==='string'&&typeof item.name==='string').map(item=>({id:item.id,key:item.key,name:item.name.slice(0,60),updatedAt:Number(item.updatedAt)||0,shareCode:typeof item.shareCode==='string'?item.shareCode:''}))};
+    libraryData={displayName:typeof saved.displayName==='string'?saved.displayName.slice(0,60):'',canvases:saved.canvases.filter(item=>item&&typeof item.id==='string'&&typeof item.key==='string'&&typeof item.name==='string').map(item=>({id:item.id,key:item.key,name:item.name.slice(0,60),updatedAt:Number(item.updatedAt)||0}))};
     return;
   }
   const existing=await readStoredValue('main');
   libraryData={displayName:'',canvases:existing?[{id:'legacy-main',key:'main',name:'My Canvas',updatedAt:Number(existing.updatedAt)||Date.now()}]:[]};
   await writeLibrary();
 }
-async function syncCloudLibrary(){
-  const {data:{session}}=await cloudClient.auth.getSession();
-  if(!session)throw new Error('Sign in again to continue.');
-  authSession=session;
-  const previousOwner=await readStoredValue('cloud-owner');
-  if(previousOwner&&previousOwner!==session.user.id){
-    libraryData={displayName:typeof session.user.user_metadata?.display_name==='string'?session.user.user_metadata.display_name.slice(0,60):'',canvases:[]};
-  }
-  const {data:remoteRows,error}=await cloudClient.from(CLOUD_TABLE).select('id,name,payload,share_code,updated_at').order('updated_at',{ascending:false});
-  if(error)throw error;
-  const remoteById=new Map(remoteRows.map(row=>[row.id,row]));
-  const syncedIds=new Set();
-  for(const entry of libraryData.canvases){
-    const localPayload=await readStoredValue(entry.key);
-    if(!localPayload)continue;
-    const remote=remoteById.get(entry.id);
-    if(remote){
-      const localTime=Number(localPayload.updatedAt)||entry.updatedAt||0;
-      const remoteTime=Number(remote.payload?.updatedAt)||Date.parse(remote.updated_at)||0;
-      if(remoteTime>localTime){
-        const tx=db.transaction(STORE,'readwrite');
-        tx.objectStore(STORE).put(remote.payload,entry.key);
-        await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
-        entry.name=remote.name;
-        entry.updatedAt=remoteTime;
-      }else{
-        entry.shareCode=entry.shareCode||remote.share_code||'';
-        await upsertCloudCanvas(entry,localPayload);
-      }
-      if(remote.share_code)entry.shareCode=remote.share_code;
-      syncedIds.add(entry.id);
-      continue;
-    }
-    await upsertCloudCanvas(entry,localPayload);
-    syncedIds.add(entry.id);
-  }
-  for(const row of remoteRows){
-    if(syncedIds.has(row.id))continue;
-    const key=makeDocumentKey(row.id);
-    const tx=db.transaction(STORE,'readwrite');
-    tx.objectStore(STORE).put(row.payload,key);
-    await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
-    libraryData.canvases.push({id:row.id,key,name:row.name,updatedAt:Number(row.payload?.updatedAt)||Date.parse(row.updated_at)||Date.now(),shareCode:row.share_code||''});
-  }
-  const profileName=session.user.user_metadata?.display_name;
-  if(!libraryData.displayName&&typeof profileName==='string')libraryData.displayName=profileName.slice(0,60);
-  await writeLibrary();
-  const ownerTx=db.transaction(STORE,'readwrite');
-  ownerTx.objectStore(STORE).put(session.user.id,'cloud-owner');
-  await new Promise((resolve,reject)=>{ownerTx.oncomplete=resolve;ownerTx.onerror=()=>reject(ownerTx.error);});
-  cloudReady=true;
-  cloudSyncError='';
-  libraryGreeting.textContent=`Hi, ${libraryData.displayName||session.user.email||'there'}`;
-}
-async function startCloudSession(session){
-  authSession=session;
-  cloudReady=false;
-  cloudSyncError='';
-  showCanvasLibrary();
-  setStatus('Syncing your private canvases…');
-  try{
-    await syncCloudLibrary();
-    showCanvasLibrary();
-    closeCanvasLibrary.disabled=!activeDocumentKey;
-    setStatus('Cloud sync ready');
-  }catch(error){
-    cloudSyncError=`Cloud sync failed: ${error.message}`;
-    cloudReady=false;
-    showCanvasLibrary();
-    setStatus(cloudSyncError);
-  }
-}
-async function signInWithGoogle(){
-  googleSignInButton.disabled=true;
-  authMessage.textContent='Opening Google sign-in…';
-  try{
-    const redirectTo=new URL(location.href);
-    redirectTo.hash='';
-    const {error}=await cloudClient.auth.signInWithOAuth({
-      provider:'google',
-      options:{redirectTo:redirectTo.href}
-    });
-    if(error)throw error;
-  }catch(error){
-    authMessage.textContent=`Could not start Google sign-in: ${error.message}`;
-    googleSignInButton.disabled=false;
-  }
-}
-async function retryCloudSetup(){
-  try{
-    const {data:{session},error}=await cloudClient.auth.getSession();
-    if(error)throw error;
-    if(!session){authSession=null;showCanvasLibrary();return;}
-    await startCloudSession(session);
-  }catch(error){
-    cloudSyncError=`Could not check your sign-in: ${error.message}`;
-    showCanvasLibrary();
-    setStatus(cloudSyncError);
-  }
-}
-async function signOut(){
-  if(!await saveToDB())return;
-  try{
-    const {error}=await cloudClient.auth.signOut();
-    if(error)throw error;
-    authSession=null;
-    cloudReady=false;
-    activeDocumentKey=null;
-    dirty=false;
-    shareCanvasButton.disabled=true;
-    restorePayload(null);
-    setStatus('Signed out');
-    showCanvasLibrary();
-  }catch(error){setStatus(`Could not sign out: ${error.message}`);}
-}
 function showCanvasLibrary(){
   canvasLibrary.hidden=false;
   canvasMenuToggle.setAttribute('aria-expanded','true');
-  selectedCanvasIds.clear();
   renderCanvasLibrary();
 }
 function renderCanvasLibrary(){
-  canvasLibraryPanel.classList.toggle('auth-only',!authSession);
-  authPanel.hidden=Boolean(authSession);
-  cloudSetupPanel.hidden=!authSession||cloudReady;
-  if(!authSession){
-    nameSetup.hidden=true;
-    libraryContent.hidden=true;
-    return;
-  }
-  if(!cloudReady){
-    nameSetup.hidden=true;
-    libraryContent.hidden=true;
-    cloudSetupMessage.textContent=cloudSyncError||'The account is signed in, but the private canvas table is unavailable.';
-    return;
-  }
-  const needsName=!libraryData.displayName;
-  nameSetup.hidden=!needsName;
-  libraryContent.hidden=needsName;
+  libraryContent.hidden=false;
   canvasNameDialog.hidden=true;
-  if(needsName){displayNameInput.focus();return;}
-  libraryGreeting.textContent=`Hi, ${libraryData.displayName}`;
   canvasGrid.replaceChildren();
+  const createCard=document.createElement('button');
+  createCard.type='button';
+  createCard.className='create-canvas-card';
+  createCard.setAttribute('aria-label','Create a canvas');
+  const createPreview=document.createElement('span');
+  createPreview.className='create-canvas-preview';
+  createPreview.setAttribute('aria-hidden','true');
+  createPreview.textContent='+';
+  const createLabel=document.createElement('span');
+  createLabel.className='create-canvas-label';
+  createLabel.textContent='Create canvas';
+  createCard.append(createPreview,createLabel);
+  createCard.addEventListener('click',createCanvasAndOpen);
+  canvasGrid.append(createCard);
   for(const entry of libraryData.canvases){
     const card=document.createElement('button');
     card.type='button';card.className='canvas-card';card.dataset.canvasId=entry.id;
-    card.setAttribute('aria-label',`${entry.name}${selectedCanvasIds.has(entry.id)?', selected':''}`);
-    const preview=document.createElement('canvas');preview.className='canvas-card-preview';preview.width=240;preview.height=240;preview.setAttribute('aria-hidden','true');
+    card.setAttribute('aria-label',entry.name);
+    const visual=createCanvasPreviewVisual();
+    const preview=visual.canvas;
     const title=document.createElement('span');title.className='canvas-card-name';title.textContent=entry.name;
-    card.append(preview,title);
+    card.append(visual.frame,title);
     drawCanvasPreview(preview,null);
     readStoredValue(entry.key).then(payload=>{
-      if(payload&&card.isConnected)drawCanvasPreview(preview,payload);
+      if(payload&&card.isConnected){
+        drawCanvasPreview(preview,payload);
+        drawSavedLocationPreview(visual.locations,payload);
+      }
     }).catch(()=>setStatus('Could not load a canvas preview'));
-    card.classList.toggle('selected',selectedCanvasIds.has(entry.id));
     let longPressed=false;
-    let pointerDownAt=0;
-    const selectCard=()=>{
-      if(longPressed)return;
-      longPressed=true;
-      if(selectedCanvasIds.has(entry.id))selectedCanvasIds.delete(entry.id);
-      else selectedCanvasIds.add(entry.id);
-      refreshCanvasSelection();
-    };
-    card.addEventListener('pointerdown',()=>{
+    let lastPointerType='mouse';
+    let pressX=0,pressY=0;
+    card.addEventListener('pointerdown',event=>{
       longPressed=false;
-      pointerDownAt=performance.now();
+      lastPointerType=event.pointerType;
       clearTimeout(canvasHoldTimer);
-      canvasHoldTimer=setTimeout(selectCard,520);
+      if(event.pointerType==='mouse')return;
+      pressX=event.clientX;pressY=event.clientY;
+      canvasHoldTimer=setTimeout(()=>{
+        longPressed=true;
+        showCanvasActions({
+          preventDefault(){},
+          stopPropagation(){},
+          clientX:pressX,
+          clientY:pressY
+        },entry,card);
+      },520);
     });
-    card.addEventListener('pointerup',event=>{
-      clearTimeout(canvasHoldTimer);
-      if(pointerDownAt&&event.timeStamp-pointerDownAt>=520)selectCard();
-      pointerDownAt=0;
-    });
+    card.addEventListener('pointerup',()=>clearTimeout(canvasHoldTimer));
     for(const eventName of ['pointercancel','pointerleave']){
-      card.addEventListener(eventName,()=>{clearTimeout(canvasHoldTimer);pointerDownAt=0;});
+      card.addEventListener(eventName,()=>clearTimeout(canvasHoldTimer));
     }
     card.addEventListener('click',()=>{
       if(longPressed){longPressed=false;return;}
-      if(selectedCanvasIds.size){
-        if(selectedCanvasIds.has(entry.id))selectedCanvasIds.delete(entry.id);
-        else selectedCanvasIds.add(entry.id);
-        refreshCanvasSelection();
-        return;
-      }
       activateCanvas(entry.id);
     });
-    card.addEventListener('contextmenu',event=>showCanvasActions(event,entry,card));
+    card.addEventListener('contextmenu',event=>{
+      if(lastPointerType!=='mouse'){
+        longPressed=true;
+        clearTimeout(canvasHoldTimer);
+      }
+      showCanvasActions(event,entry,card);
+    });
     card.addEventListener('keydown',event=>{
       if(event.key==='ContextMenu'||(event.shiftKey&&event.key==='F10')){
         showCanvasActions(event,entry,card);
@@ -891,32 +737,40 @@ function renderCanvasLibrary(){
     });
     canvasGrid.append(card);
   }
-  if(!libraryData.canvases.length){
-    const emptyCard=document.createElement('div');
-    emptyCard.className='empty-canvas-card';
-    emptyCard.setAttribute('role','button');
-    emptyCard.tabIndex=0;
-    emptyCard.setAttribute('aria-label','Open canvas actions to create a canvas');
-    const preview=document.createElement('span');preview.className='empty-canvas-preview';preview.setAttribute('aria-hidden','true');
-    const label=document.createElement('span');label.className='empty-canvas-label';label.textContent='Open actions to create a canvas';
-    emptyCard.append(preview,label);
-    emptyCard.addEventListener('contextmenu',event=>showCanvasActions(event,null,emptyCard));
-    emptyCard.addEventListener('click',event=>showCanvasActions(event,null,emptyCard));
-    emptyCard.addEventListener('keydown',event=>{
-      if(event.key==='Enter'||event.key===' '||event.key==='ContextMenu'||(event.shiftKey&&event.key==='F10')){
-        event.preventDefault();
-        showCanvasActions(event,null,emptyCard);
-      }
-    });
-    canvasGrid.append(emptyCard);
+}
+function createCanvasPreviewVisual(){
+  const frame=document.createElement('span');
+  frame.className='canvas-card-visual';
+  const canvas=document.createElement('canvas');
+  canvas.className='canvas-card-preview';
+  canvas.width=240;canvas.height=240;
+  canvas.setAttribute('aria-hidden','true');
+  const locations=document.createElement('span');
+  locations.className='saved-location-preview';
+  locations.setAttribute('aria-hidden','true');
+  frame.append(canvas,locations);
+  return{frame,canvas,locations};
+}
+function drawSavedLocationPreview(container,payload){
+  container.replaceChildren();
+  const locations=Array.isArray(payload?.savedLocations)?payload.savedLocations:[];
+  const rowStep=20;
+  const visibleCount=Math.max(0,Math.floor((container.parentElement.clientHeight-8)/rowStep));
+  for(const location of locations.slice(0,visibleCount)){
+    if(!location||typeof location.name!=='string')continue;
+    const item=document.createElement('span');
+    item.className='saved-location-preview-item';
+    item.textContent=location.name;
+    item.title=location.name;
+    container.append(item);
   }
-  refreshCanvasSelection();
 }
 function showCanvasActions(event,entry,anchor){
   event.preventDefault();
   event.stopPropagation();
   contextCanvasEntry=entry;
   contextRenameCanvasButton.hidden=!entry;
+  contextDeleteCanvasButton.hidden=!entry;
   canvasContextMenu.hidden=false;
   const bounds=anchor.getBoundingClientRect();
   const libraryBounds=canvasLibrary.getBoundingClientRect();
@@ -929,14 +783,13 @@ function showCanvasActions(event,entry,anchor){
     const top=Math.max(8,Math.min(clientY-libraryBounds.top,libraryBounds.height-menuHeight-8));
     canvasContextMenu.style.left=`${left}px`;
     canvasContextMenu.style.top=`${top}px`;
-    (entry?contextRenameCanvasButton:contextCreateCanvasButton).focus();
+    contextRenameCanvasButton.focus();
   });
 }
 function closeCanvasActions(){
   canvasContextMenu.hidden=true;
   contextCanvasEntry=null;
 }
-canvasGrid.addEventListener('contextmenu',event=>showCanvasActions(event,null,canvasGrid));
 document.addEventListener('pointerdown',event=>{
   if(!canvasContextMenu.hidden&&!canvasContextMenu.contains(event.target))closeCanvasActions();
 });
@@ -947,13 +800,11 @@ function drawCanvasPreview(canvas,payload){
   const preview=canvas.getContext('2d');
   const size=canvas.width;
   preview.clearRect(0,0,size,size);
-  preview.fillStyle='#f7f8fa';preview.fillRect(0,0,size,size);
+  preview.fillStyle=canvasBackgroundColor(Boolean(payload&&payload.darkMode),payload&&payload.worldFill);
+  preview.fillRect(0,0,size,size);
   const list=payload&&Array.isArray(payload.strokes)?payload.strokes:[];
   const points=list.flatMap(stroke=>Array.isArray(stroke.points)?stroke.points:[]);
-  if(!points.length){
-    preview.fillStyle='#8a8f99';preview.font='14px system-ui';preview.textAlign='center';preview.fillText('Empty canvas',size/2,size/2);
-    return;
-  }
+  if(!points.length)return;
   let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
   for(const point of points){
     minX=Math.min(minX,point.x);maxX=Math.max(maxX,point.x);
@@ -967,7 +818,7 @@ function drawCanvasPreview(canvas,payload){
     if(!Array.isArray(stroke.points)||!stroke.points.length)continue;
     const path=stroke.points;
     preview.globalAlpha=Number.isFinite(stroke.opacity)?stroke.opacity:1;
-    preview.strokeStyle=stroke.color||'#202124';preview.fillStyle=stroke.color||'#202124';
+    preview.strokeStyle=displayColor(stroke.color||'#202124',Boolean(payload&&payload.darkMode));preview.fillStyle=displayColor(stroke.color||'#202124',Boolean(payload&&payload.darkMode));
     preview.lineWidth=Math.max(.5,(stroke.width||2)/(stroke.screenSize?scale:1));
     preview.lineCap='round';preview.lineJoin='round';
     preview.beginPath();preview.moveTo(path[0].x,path[0].y);
@@ -978,19 +829,10 @@ function drawCanvasPreview(canvas,payload){
   }
   preview.restore();
 }
-function refreshCanvasSelection(){
-  for(const card of canvasGrid.querySelectorAll('.canvas-card')){
-    card.classList.toggle('selected',selectedCanvasIds.has(card.dataset.canvasId));
-    card.setAttribute('aria-pressed',String(selectedCanvasIds.has(card.dataset.canvasId)));
-  }
-  const count=selectedCanvasIds.size;
-  deleteCanvasesButton.disabled=count===0;
-  deleteCanvasesButton.textContent=count?`Delete selected (${count})`:'Delete selected';
-}
 async function activateCanvas(id){
   const entry=libraryData.canvases.find(item=>item.id===id);
   if(!entry)return;
-  if(authSession&&!cloudReady){setStatus('Cloud storage is not ready; finish the Supabase table setup first.');return;}
+  if(peerConnection){setStatus('Disconnect from the shared session before switching canvases.');return;}
   if(!await saveToDB())return;
   try{
     const payload=await readStoredValue(entry.key);
@@ -999,8 +841,7 @@ async function activateCanvas(id){
     restorePayload(payload);
     camera={x:canvasEl.clientWidth/2,y:canvasEl.clientHeight/2,zoom:DEFAULT_ZOOM};
     dirty=false;selection=null;activeStroke=null;
-    closeCanvasLibrary.disabled=false;
-    shareCanvasButton.disabled=!authSession||!cloudReady;
+    updateShareButton();
     canvasLibrary.hidden=true;
     canvasMenuToggle.setAttribute('aria-expanded','false');
     setStatus('Canvas opened');
@@ -1015,42 +856,156 @@ function showCanvasNameDialog(mode,entry=null){
   canvasNameDialog.hidden=false;
   requestAnimationFrame(()=>{canvasNameInput.focus();canvasNameInput.select();});
 }
+function normalizedCanvasName(name){
+  return name.trim().normalize('NFC').toLowerCase();
+}
+async function showDuplicateNameDialog(name,matches){
+  duplicateNameValue=name;
+  duplicateNameMatches=matches;
+  duplicateNameSelectedId=matches[0]?.id||null;
+  duplicateCanvasChoices.replaceChildren();
+  canvasNameDialog.hidden=true;
+  duplicateNameOverlay.hidden=false;
+  replaceDuplicateCanvasButton.disabled=true;
+  const options=[];
+  for(const entry of matches){
+    const option=document.createElement('button');
+    option.type='button';
+    option.className='duplicate-canvas-option';
+    option.setAttribute('aria-pressed',String(entry.id===duplicateNameSelectedId));
+    option.dataset.previewAvailable='false';
+    const visual=createCanvasPreviewVisual();
+    const title=document.createElement('span');
+    title.className='duplicate-canvas-option-name';
+    title.textContent=entry.name;
+    option.append(visual.frame,title);
+    option.addEventListener('click',()=>{
+      duplicateNameSelectedId=entry.id;
+      for(const choice of duplicateCanvasChoices.children){
+        choice.setAttribute('aria-pressed',String(choice===option));
+      }
+      replaceDuplicateCanvasButton.disabled=option.dataset.previewAvailable!=='true';
+      if(!replaceDuplicateCanvasButton.disabled)replaceDuplicateCanvasButton.focus();
+    });
+    duplicateCanvasChoices.append(option);
+    options.push({entry,option,visual});
+  }
+  await Promise.all(options.map(async({entry,option,visual})=>{
+    try{
+      const payload=await readStoredValue(entry.key);
+      if(payload&&option.isConnected){
+        drawCanvasPreview(visual.canvas,payload);
+        drawSavedLocationPreview(visual.locations,payload);
+        option.dataset.previewAvailable='true';
+      }else{
+        setStatus(`Canvas data is missing for "${entry.name}".`);
+      }
+    }catch(error){setStatus(`Could not load preview for "${entry.name}": ${error.message}`);}
+  }));
+  const selectedOption=duplicateCanvasChoices.querySelector('.duplicate-canvas-option[aria-pressed="true"]');
+  replaceDuplicateCanvasButton.disabled=!selectedOption||selectedOption.dataset.previewAvailable!=='true';
+  requestAnimationFrame(()=> (replaceDuplicateCanvasButton.disabled?keepBothCanvasesButton:replaceDuplicateCanvasButton).focus());
+}
+function closeDuplicateNameDialog(resumeNaming){
+  duplicateNameOverlay.hidden=true;
+  duplicateNameMatches=[];
+  duplicateNameSelectedId=null;
+  if(resumeNaming){
+    canvasNameInput.value=duplicateNameValue;
+    canvasNameDialog.hidden=false;
+    requestAnimationFrame(()=>{canvasNameInput.focus();canvasNameInput.select();});
+  }
+}
 async function saveCanvasName(event){
   event.preventDefault();
   const name=canvasNameInput.value.trim().slice(0,60);
   if(!name)return;
-  if(canvasNameDialogMode==='rename'||canvasNameDialogMode==='new-name'){
-    const target=libraryData.canvases.find(item=>item.id===canvasNameDialogTarget?.id);
-    if(!target)return;
-    const previousName=target.name;
-    target.name=name;
-    try{
-      await writeLibrary();
-      if(authSession&&cloudReady){
-        const payload=await readStoredValue(target.key);
-        if(!payload)throw new Error('Canvas data is missing.');
-        payload.updatedAt=Date.now();
-        await upsertCloudCanvas(target,payload);
-        target.updatedAt=payload.updatedAt;
-        const tx=db.transaction(STORE,'readwrite');
-        tx.objectStore(STORE).put(payload,target.key);
-        await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
-      }
-      canvasNameDialog.hidden=true;
-      if(canvasNameDialogMode==='rename')renderCanvasLibrary();
-    }catch(error){
-      target.name=previousName;
-      try{await writeLibrary();}catch(storageError){setStatus(`Could not save canvas name: ${storageError.message}`);return;}
-      setStatus(`Could not rename canvas: ${error.message}`);
-    }
+  const target=libraryData.canvases.find(item=>item.id===canvasNameDialogTarget?.id);
+  if(!target)return;
+  const normalized=normalizedCanvasName(name);
+  const matches=libraryData.canvases.filter(item=>
+    item.id!==target.id&&normalizedCanvasName(item.name)===normalized
+  );
+  if(matches.length){
+    try{await showDuplicateNameDialog(name,matches);}
+    catch(error){setStatus(`Could not prepare duplicate-name choices: ${error.message}`);}
     return;
   }
+  await saveNamedCanvas(name);
+}
+async function saveNamedCanvas(name){
+  const target=libraryData.canvases.find(item=>item.id===canvasNameDialogTarget?.id);
+  if(!target)return;
+  const previousName=target.name,previousUpdatedAt=target.updatedAt;
+  target.name=name;
+  target.updatedAt=Date.now();
+  try{
+    await writeLibrary();
+    canvasNameDialog.hidden=true;
+    if(canvasNameDialogMode==='rename')renderCanvasLibrary();
+  }catch(error){
+    target.name=previousName;
+    target.updatedAt=previousUpdatedAt;
+    try{await writeLibrary();}catch(storageError){setStatus(`Could not save canvas name: ${storageError.message}`);return;}
+    setStatus(`Could not save canvas name: ${error.message}`);
+  }
+}
+function keepBothWithSuffix(){
+  const source=libraryData.canvases.find(item=>item.id===canvasNameDialogTarget?.id);
+  if(!source)return;
+  const base=duplicateNameValue;
+  let suffix=duplicateNameMatches.length;
+  let name=`${base} (${suffix})`;
+  while(libraryData.canvases.some(item=>
+    item.id!==source.id&&normalizedCanvasName(item.name)===normalizedCanvasName(name)
+  )){
+    suffix++;
+    name=`${base} (${suffix})`;
+  }
+  closeDuplicateNameDialog(false);
+  canvasNameInput.value=name;
+  canvasNameDialog.hidden=false;
+  saveNamedCanvas(name);
+}
+async function replaceDuplicateCanvas(){
+  const source=libraryData.canvases.find(item=>item.id===canvasNameDialogTarget?.id);
+  const target=libraryData.canvases.find(item=>item.id===duplicateNameSelectedId);
+  if(!source||!target||source.id===target.id)return;
+  if(!await saveToDB())return;
+  try{
+    const payload=await readStoredValue(source.key);
+    if(!payload)throw new Error('The canvas being named is missing its data.');
+    payload.updatedAt=Date.now();
+    const replacement={...target,name:duplicateNameValue,updatedAt:payload.updatedAt};
+    const canvases=libraryData.canvases
+      .filter(item=>item.id!==source.id)
+      .map(item=>item.id===target.id?replacement:item);
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(STORE,'readwrite'),store=tx.objectStore(STORE);
+      store.delete(source.key);
+      store.put(payload,target.key);
+      store.put({...libraryData,canvases},LIBRARY_KEY);
+      tx.oncomplete=resolve;
+      tx.onerror=()=>reject(tx.error);
+    });
+    libraryData.canvases=canvases;
+    if(activeDocumentKey===source.key||activeDocumentKey===target.key){
+      activeDocumentKey=target.key;
+      restorePayload(payload);
+      dirty=false;selection=null;activeStroke=null;
+      updateShareButton();
+    }
+    canvasNameDialog.hidden=true;
+    closeDuplicateNameDialog(false);
+    if(!canvasLibrary.hidden)renderCanvasLibrary();
+    setStatus(`Replaced "${target.name}" with the new canvas`);
+    requestRender();
+  }catch(error){setStatus(`Could not replace canvas: ${error.message}`);}
 }
 async function createCanvasAndOpen(){
-  if(authSession&&!cloudReady){setStatus('Cloud storage is not ready; finish the Supabase table setup first.');return;}
   if(!db||!await saveToDB())return;
   const id=makeCanvasId(),key=makeDocumentKey(id);
-  const entry={id,key,name:`Canvas ${libraryData.canvases.length+1}`,updatedAt:Date.now(),shareCode:''};
+  const entry={id,key,name:`Canvas ${libraryData.canvases.length+1}`,updatedAt:Date.now()};
   try{
     await new Promise((resolve,reject)=>{
       const tx=db.transaction(STORE,'readwrite');
@@ -1060,39 +1015,25 @@ async function createCanvasAndOpen(){
     });
     libraryData.canvases.push(entry);
     await writeLibrary();
-    let cloudSaveError=null;
-    if(authSession&&cloudReady){
-      try{await upsertCloudCanvas(entry,emptyDocument());}
-      catch(error){cloudSaveError=error;}
-    }
-    selectedCanvasIds.clear();
     await activateCanvas(id);
     if(activeDocumentKey===key)showCanvasNameDialog('new-name',entry);
-    if(cloudSaveError)setStatus(`Canvas created locally, but cloud save failed: ${cloudSaveError.message}`);
   }catch(error){setStatus(`Could not create canvas: ${error.message}`);}
 }
-async function deleteSelectedCanvases(){
-  if(!selectedCanvasIds.size)return;
-  const count=selectedCanvasIds.size;
-  if(!window.confirm(`Delete ${count} selected canvas${count===1?'':'es'}? This cannot be undone.`))return;
-  const removed=libraryData.canvases.filter(item=>selectedCanvasIds.has(item.id));
-  const remaining=libraryData.canvases.filter(item=>!selectedCanvasIds.has(item.id));
+async function deleteCanvasEntry(entry){
+  if(!libraryData.canvases.some(item=>item.id===entry.id))return;
+  if(!window.confirm(`Delete "${entry.name}"? This cannot be undone.`))return;
+  const remaining=libraryData.canvases.filter(item=>item.id!==entry.id);
   try{
-    if(authSession&&cloudReady){
-      const {error}=await cloudClient.from(CLOUD_TABLE).delete().in('id',removed.map(entry=>entry.id));
-      if(error)throw error;
-    }
     const tx=db.transaction(STORE,'readwrite'),store=tx.objectStore(STORE);
-    for(const entry of removed)store.delete(entry.key);
+    store.delete(entry.key);
     store.put({...libraryData,canvases:remaining},LIBRARY_KEY);
     tx.oncomplete=()=>{
       libraryData.canvases=remaining;
-      if(removed.some(entry=>entry.key===activeDocumentKey)){
+      if(entry.key===activeDocumentKey){
         activeDocumentKey=null;dirty=false;restorePayload(null);
-        closeCanvasLibrary.disabled=true;
-        shareCanvasButton.disabled=true;
+        updateShareButton();
       }
-      selectedCanvasIds.clear();renderCanvasLibrary();
+      renderCanvasLibrary();
     };
     tx.onerror=()=>setStatus(`Could not delete canvases: ${tx.error?.message||'storage error'}`);
   }catch(error){setStatus(`Could not delete canvases: ${error.message}`);}
@@ -1105,12 +1046,12 @@ function restorePayload(data) {
   setTrayExpanded(false);
   darkMode=Boolean(data&&data.darkMode);
   settings={
-    pen:{color:'#202124',size:5,fill:false},
-    marker:{color:'#202124',size:12,fill:false},
+    pen:{color:'#000000',size:5,fill:false},
+    marker:{color:'#000000',size:12,fill:false},
     highlighter:{color:'#ffe85c',size:24,fill:false,transparency:50,rotation:0},
     eraser:{size:16},
-    calligraphy:{color:'#202124',size:8,fill:false,rotation:0},
-    pencil:{color:'#202124',size:7,fill:false,rotation:0},
+    calligraphy:{color:'#000000',size:8,fill:false,rotation:0},
+    pencil:{color:'#000000',size:7,fill:false,rotation:0},
     shader:{size:28}
   };
   if(data && data.settings){
@@ -1212,10 +1153,11 @@ function cloneStroke(stroke){
   return {...stroke,points:stroke.points.map(point=>({...point})),bounds:{...stroke.bounds},indexBounds:stroke.indexBounds?{...stroke.indexBounds}:undefined,chunkKeys:[]};
 }
 function drawGrid() {
-  const b=visibleWorldBounds(), step=CHUNK_SIZE;
+  const b=visibleWorldBounds();
+  const desiredStep=96/camera.zoom;
+  const step=CHUNK_SIZE*2**Math.round(Math.log2(desiredStep/CHUNK_SIZE));
   const minX=Math.floor(b.minX/step),maxX=Math.ceil(b.maxX/step);
   const minY=Math.floor(b.minY/step),maxY=Math.ceil(b.maxY/step);
-  if(maxX-minX>120||maxY-minY>120)return;
   ctx.save();ctx.lineWidth=1;ctx.strokeStyle=darkMode?'#393c44':'#e6e9ef';
   for(let x=minX;x<=maxX;x++){const sx=worldToScreen(x*step,0).x;ctx.beginPath();ctx.moveTo(sx,0);ctx.lineTo(sx,canvasEl.clientHeight);ctx.stroke();}
   for(let y=minY;y<=maxY;y++){const sy=worldToScreen(0,y*step).y;ctx.beginPath();ctx.moveTo(0,sy);ctx.lineTo(canvasEl.clientWidth,sy);ctx.stroke();}
@@ -1229,7 +1171,7 @@ function drawStroke(stroke) {
   ctx.lineWidth=stroke.width*strokeScale;ctx.lineCap='round';ctx.lineJoin='round';
   if(stroke.tool==='shader'){
     for(const point of pts){
-      const p=worldToScreen(point.x,point.y),radius=Math.max(1,stroke.width*strokeScale/2);
+      const p=worldToScreen(point.x,point.y),radius=stroke.width*strokeScale/2;
       const color=point.color||'#202124';
       const gradient=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,radius);
       gradient.addColorStop(0,`${color}66`);gradient.addColorStop(.65,`${color}2b`);gradient.addColorStop(1,`${color}00`);
@@ -1241,7 +1183,7 @@ function drawStroke(stroke) {
     drawRotatedNibPoints(stroke,pts);
     ctx.restore();return;
   }
-  if(pts.length===1){const p=worldToScreen(pts[0].x,pts[0].y);ctx.beginPath();ctx.arc(p.x,p.y,Math.max(.5,stroke.width*strokeScale/2),0,Math.PI*2);ctx.fill();}
+  if(pts.length===1){const p=worldToScreen(pts[0].x,pts[0].y);ctx.beginPath();ctx.arc(p.x,p.y,stroke.width*strokeScale/2,0,Math.PI*2);ctx.fill();}
   else {
     ctx.beginPath();const first=worldToScreen(pts[0].x,pts[0].y);ctx.moveTo(first.x,first.y);
     for(let i=1;i<pts.length;i++){const p=worldToScreen(pts[i].x,pts[i].y);ctx.lineTo(p.x,p.y);}
@@ -1264,8 +1206,8 @@ function drawStroke(stroke) {
   ctx.restore();
 }
 function drawRotatedNibPoints(stroke,points){
-  const nibLength=Math.max(1,stroke.width*(stroke.screenSize?1:camera.zoom));
-  const nibWidth=Math.max(1,nibLength*(stroke.tool==='highlighter'?.42:.28));
+  const nibLength=stroke.width*(stroke.screenSize?1:camera.zoom);
+  const nibWidth=nibLength*(stroke.tool==='highlighter'?.42:.28);
   const angle=(stroke.rotation||0)*Math.PI/180;
   const drawDab=point=>{
     const p=worldToScreen(point.x,point.y);
@@ -1300,6 +1242,42 @@ function clipSegment(start,end,left,right,top,bottom){
   }
   return{start:{x:start.x+dx*t0,y:start.y+dy*t0},end:{x:start.x+dx*t1,y:start.y+dy*t1}};
 }
+function drawBrushCursorOutline(radius){
+  if(radius<=0)return;
+  const pixelRadius=Math.ceil((radius+2)*dpr);
+  const centerX=Math.round(cursorPosition.x*dpr),centerY=Math.round(cursorPosition.y*dpr);
+  const left=Math.max(0,centerX-pixelRadius),top=Math.max(0,centerY-pixelRadius);
+  const right=Math.min(canvasEl.width,centerX+pixelRadius+1),bottom=Math.min(canvasEl.height,centerY+pixelRadius+1);
+  if(right<=left||bottom<=top)return;
+  const pixels=ctx.getImageData(left,top,right-left,bottom-top);
+  const color=tool==='eraser'?null:(currentSettings().color||'#000000');
+  const target=color?[
+    parseInt(color.slice(1,3),16),
+    parseInt(color.slice(3,5),16),
+    parseInt(color.slice(5,7),16)
+  ]:null;
+  const segments=Math.max(48,Math.ceil(2*Math.PI*radius*dpr));
+  ctx.save();ctx.lineWidth=1.5;ctx.lineCap='butt';
+  for(let i=0;i<segments;i++){
+    const start=(i/segments)*Math.PI*2,end=((i+1)/segments)*Math.PI*2;
+    const mid=(start+end)/2;
+    const px=clamp(Math.round(centerX+Math.cos(mid)*radius*dpr)-left,0,right-left-1);
+    const py=clamp(Math.round(centerY+Math.sin(mid)*radius*dpr)-top,0,bottom-top-1);
+    const offset=(py*(right-left)+px)*4;
+    const red=pixels.data[offset],green=pixels.data[offset+1],blue=pixels.data[offset+2];
+    if(!target){
+      ctx.strokeStyle=red<80&&green<80&&blue<80?'#fff':'#000';
+    }else if(red===target[0]&&green===target[1]&&blue===target[2]){
+      ctx.strokeStyle=`rgb(${255-red},${255-green},${255-blue})`;
+    }else{
+      ctx.strokeStyle=color;
+    }
+    ctx.beginPath();
+    ctx.arc(cursorPosition.x,cursorPosition.y,radius,start,end);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
 function drawBrushCursor() {
   if(!cursorPosition||!DRAWING_TOOLS.includes(tool))return;
   if(toolRotationDrag&&rotationPreviewPosition){
@@ -1308,10 +1286,6 @@ function drawBrushCursor() {
   }
   const width=strokeWidthFor();
   const radius=Math.max(.5,width/2);
-  if(tool!=='eraser'){
-    ctx.save();ctx.beginPath();ctx.arc(cursorPosition.x,cursorPosition.y,radius,0,Math.PI*2);
-    ctx.lineWidth=1.5;ctx.strokeStyle=currentSettings().color||'#202124';ctx.stroke();ctx.restore();return;
-  }
   function drawRotatingNibPreview(position){
     const config=currentSettings();
     const screenPoint=position;
@@ -1320,32 +1294,13 @@ function drawBrushCursor() {
     const angle=(config.rotation||0)*Math.PI/180;
     ctx.save();ctx.translate(screenPoint.x,screenPoint.y);ctx.rotate(angle);
     ctx.beginPath();ctx.ellipse(0,0,width/2,nibWidth/2,0,0,Math.PI*2);
-    ctx.fillStyle=config.color||'#202124';ctx.fill();
+    ctx.fillStyle=config.color||'#000000';ctx.fill();
     ctx.lineWidth=1.5;ctx.strokeStyle=darkMode?'#fff':'#202124';ctx.stroke();
     ctx.beginPath();ctx.moveTo(-width/2,-nibWidth/2);ctx.lineTo(-width/2,nibWidth/2);
     ctx.strokeStyle=darkMode?'#202124':'#fff';ctx.lineWidth=1;ctx.stroke();
     ctx.restore();
   }
-  const pixelRadius=Math.ceil((radius+2)*dpr);
-  const centerX=Math.round(cursorPosition.x*dpr),centerY=Math.round(cursorPosition.y*dpr);
-  const left=Math.max(0,centerX-pixelRadius),top=Math.max(0,centerY-pixelRadius);
-  const right=Math.min(canvasEl.width,centerX+pixelRadius+1),bottom=Math.min(canvasEl.height,centerY+pixelRadius+1);
-  const pixels=ctx.getImageData(left,top,right-left,bottom-top);
-  const segments=Math.max(48,Math.ceil(2*Math.PI*radius/4));
-  ctx.save();ctx.lineWidth=1.5;ctx.lineCap='butt';
-  for(let i=0;i<segments;i++){
-    const start=(i/segments)*Math.PI*2,end=((i+1)/segments)*Math.PI*2;
-    const mid=(start+end)/2;
-    const px=clamp(Math.round(centerX+Math.cos(mid)*radius*dpr)-left,0,right-left-1);
-    const py=clamp(Math.round(centerY+Math.sin(mid)*radius*dpr)-top,0,bottom-top-1);
-    const offset=(py*(right-left)+px)*4;
-    const isBlack=pixels.data[offset]<80&&pixels.data[offset+1]<80&&pixels.data[offset+2]<80;
-    ctx.strokeStyle=isBlack?'#fff':'#000';
-    ctx.beginPath();
-    ctx.arc(cursorPosition.x,cursorPosition.y,radius,start,end);
-    ctx.stroke();
-  }
-  ctx.restore();
+  drawBrushCursorOutline(radius);
 }
 function selectedStrokes(){return selection?selection.ids.map(id=>strokes.get(id)).filter(Boolean):[];}
 function selectionBounds(){
@@ -1431,11 +1386,14 @@ function applyStrokeStates(from,to){
   }
   strokeOrderDirty=true;
 }
+function broadcastStrokeReplace(from,to){
+  peerSendMessage({type:'strokes:replace',remove:from.map(stroke=>stroke.id),upsert:to,worldFill});
+}
 function recordGeometryChange(before,after,beforeSelection,afterSelection){
   applyStrokeStates(before,after);
   selection=selectionSnapshot(afterSelection);
   undoStack.push({type:'geometry',before:before.map(cloneStroke),after:after.map(cloneStroke),beforeSelection:selectionSnapshot(beforeSelection),afterSelection:selectionSnapshot(afterSelection)});
-  redoStack=[];markDirty();requestRender();updateButtons();
+  redoStack=[];broadcastStrokeReplace(before,after);markDirty();requestRender();updateButtons();
 }
 function makeStrokeFragment(stroke,points,suffix){
   const fragment=cloneStroke(stroke);
@@ -1530,7 +1488,7 @@ function finishSelectionTransform(){
   const afterSelection=selectionSnapshot();
   selectionTransform=null;
   undoStack.push({type:'geometry',before,after,beforeSelection,afterSelection});
-  redoStack=[];markDirty();updateButtons();
+  redoStack=[];broadcastStrokeReplace(before,after);markDirty();updateButtons();
 }
 function sampleCanvasColor(point){
   const x=clamp(Math.round(point.x*dpr),0,canvasEl.width-1),y=clamp(Math.round(point.y*dpr),0,canvasEl.height-1);
@@ -1561,23 +1519,21 @@ function render() {
   if(activeStroke)drawStroke(activeStroke);
   drawSelection();drawLasso();
   drawBrushCursor();
-  const percent=camera.zoom*100;
-  zoomLabel.textContent=`${percent<.01?percent.toExponential(1):Math.round(percent).toLocaleString()}%`;
 }
 function requestRender(){if(renderQueued)return;renderQueued=true;requestAnimationFrame(render);}
 function eventPos(e){const r=canvasEl.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
 function startStroke(p) {
   const world=screenToWorld(p.x,p.y);
   const config=currentSettings();
-  const width=strokeWidthFor();
+  const width=strokeWidthFor()/camera.zoom;
   activeStroke={
     id:`s_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
-    tool,color:tool==='eraser'?'#f7f8fa':tool==='shader'?'#202124':config.color,width,
+    tool,color:tool==='eraser'?canvasBackgroundColor():tool==='shader'?'#202124':config.color,width,
     rotation:supportsRotation(tool)?config.rotation:0,
     opacity:tool==='eraser'?1:opacityFor(),
-    fillEnabled:tool!=='eraser'&&config.fill,screenSize:true,
+    fillEnabled:tool!=='eraser'&&config.fill,
     points:[{...world,...(tool==='shader'?{color:sampleCanvasColor(p)}:{})}],
-    bounds:screenStrokeWorldBounds({points:[world],width}),indexBounds:centerlineBounds([world]),chunkKeys:[]
+    bounds:boundsFor([world],width),chunkKeys:[]
   };
   pointerMode='draw';requestRender();
 }
@@ -1586,31 +1542,24 @@ function extendStroke(p) {
   const world=screenToWorld(p.x,p.y),pts=activeStroke.points,last=pts[pts.length-1];
   if(Math.hypot(world.x-last.x,world.y-last.y)<1.1/camera.zoom)return;
   pts.push({...world,...(activeStroke.tool==='shader'?{color:sampleCanvasColor(p)}:{})});
-  activeStroke.bounds=boundsFor(pts,activeStroke.width/camera.zoom);
-  activeStroke.indexBounds=centerlineBounds(pts);
+  activeStroke.bounds=boundsFor(pts,activeStroke.width);
   requestRender();
 }
 function finishStroke() {
   if(!activeStroke)return;
   ensureScreenStrokeBounds();
   const stroke=activeStroke;activeStroke=null;
-  if(stroke.tool==='eraser'){
-    const hit=[];
-    for(const s of strokes.values())if(intersects(s.bounds,stroke.bounds))hit.push(s.id);
-    for(const id of hit)removeStroke(id,true);
-  } else {
-    if(stroke.fillEnabled&&stroke.points.length>2){
-      const first=stroke.points[0],last=stroke.points[stroke.points.length-1];
-      const closed=Math.hypot(first.x-last.x,first.y-last.y)<=Math.max(1.5,stroke.width*.5);
-      if(closed)stroke.fillRegion=true;
-      else{
-        stroke.worldFillBefore=worldFill?{...worldFill}:null;
-        stroke.worldFillAfter={color:stroke.color,opacity:stroke.opacity};
-        worldFill=stroke.worldFillAfter;
-      }
+  if(stroke.fillEnabled&&stroke.points.length>2){
+    const first=stroke.points[0],last=stroke.points[stroke.points.length-1];
+    const closed=Math.hypot(first.x-last.x,first.y-last.y)<=Math.max(1.5,stroke.width*.5);
+    if(closed)stroke.fillRegion=true;
+    else{
+      stroke.worldFillBefore=worldFill?{...worldFill}:null;
+      stroke.worldFillAfter={color:stroke.color,opacity:stroke.opacity};
+      worldFill=stroke.worldFillAfter;
     }
-    addStroke(stroke,true);
   }
+  addStroke(stroke,true);
   pointerMode=null;requestRender();
 }
 function panBy(dx,dy){camera.x+=dx;camera.y+=dy;markCameraDirty();requestRender();}
@@ -1635,6 +1584,7 @@ function beginCanvasPinch(){
   pointerMode='pinch';
 }
 canvasEl.addEventListener('pointerdown',e=>{
+  if(peerConnection&&!peerIsHost&&!peerReady)return;
   if(e.pointerType==='touch')e.preventDefault();
   if(e.button===2&&supportsRotation(tool)){
     e.preventDefault();canvasEl.setPointerCapture(e.pointerId);
@@ -1728,8 +1678,12 @@ function endPointer(e){
 }
 canvasEl.addEventListener('pointerup',endPointer);
 canvasEl.addEventListener('pointercancel',endPointer);
-canvasEl.addEventListener('wheel',e=>{e.preventDefault();const p=eventPos(e);zoomAt(p.x,p.y,Math.exp(-e.deltaY*.0025));},{passive:false});
+canvasEl.addEventListener('wheel',e=>{e.preventDefault();const p=eventPos(e);zoomAt(p.x,p.y,Math.pow(1.0001,-e.deltaY/100));},{passive:false});
 window.addEventListener('keydown',e=>{
+  if(!duplicateNameOverlay.hidden&&e.key==='Escape'){
+    closeDuplicateNameDialog(true);
+    return;
+  }
   if(!canvasNameDialog.hidden&&e.key==='Escape'){
     canvasNameDialog.hidden=true;
     return;
@@ -1759,23 +1713,86 @@ function undo(){
   const a=undoStack.pop();if(!a)return;
   if(a.type==='geometry'){
     applyStrokeStates(a.after,a.before);selection=selectionSnapshot(a.beforeSelection);
+    broadcastStrokeReplace(a.after,a.before);
   }else if(a.type==='add'){
     unindexStroke(a.stroke);strokes.delete(a.stroke.id);strokeOrderDirty=true;
     if(a.worldFillAfter)worldFill=a.worldFillBefore?{...a.worldFillBefore}:null;
-  }else{strokes.set(a.stroke.id,a.stroke);strokeOrderDirty=true;indexStroke(a.stroke);}
+    peerSendMessage({type:'stroke:remove',id:a.stroke.id});
+    if(a.worldFillAfter)peerSendMessage({type:'document:appearance',darkMode,worldFill});
+  }else{
+    strokes.set(a.stroke.id,a.stroke);strokeOrderDirty=true;indexStroke(a.stroke);
+    peerSendMessage({type:'stroke:upsert',stroke:a.stroke,worldFill});
+  }
   redoStack.push(a);markDirty();requestRender();updateButtons();
 }
 function redo(){
   const a=redoStack.pop();if(!a)return;
   if(a.type==='geometry'){
     applyStrokeStates(a.before,a.after);selection=selectionSnapshot(a.afterSelection);
+    broadcastStrokeReplace(a.before,a.after);
   }else if(a.type==='add'){
     strokes.set(a.stroke.id,a.stroke);strokeOrderDirty=true;indexStroke(a.stroke);
     if(a.worldFillAfter)worldFill={...a.worldFillAfter};
-  }else{unindexStroke(a.stroke);strokes.delete(a.stroke.id);strokeOrderDirty=true;}
+    peerSendMessage({type:'stroke:upsert',stroke:a.stroke,worldFill});
+  }else{
+    unindexStroke(a.stroke);strokes.delete(a.stroke.id);strokeOrderDirty=true;
+    peerSendMessage({type:'stroke:remove',id:a.stroke.id});
+  }
+  if(a.worldFillAfter)peerSendMessage({type:'document:appearance',darkMode,worldFill});
   undoStack.push(a);markDirty();requestRender();updateButtons();
 }
 function updateButtons(){document.getElementById('undo').disabled=!undoStack.length;document.getElementById('redo').disabled=!redoStack.length;}
+function reorderSavedLocationRow(row,clientY){
+  const rows=[...savedLocationsList.querySelectorAll('.saved-location-item')].filter(item=>item!==row);
+  const target=rows.find(item=>{
+    const bounds=item.getBoundingClientRect();
+    return clientY<bounds.top+bounds.height/2;
+  });
+  if(target)savedLocationsList.insertBefore(row,target);
+  else savedLocationsList.append(row);
+}
+function autoScrollSavedLocationDrag(){
+  const drag=savedLocationReorder;
+  if(!drag?.active)return;
+  const bounds=savedLocationsPanel.getBoundingClientRect();
+  const edge=32;
+  if(drag.clientY<bounds.top+edge&&savedLocationsPanel.scrollTop>0){
+    savedLocationsPanel.scrollTop-=Math.max(2,Math.ceil((bounds.top+edge-drag.clientY)/5));
+  }else if(drag.clientY>bounds.bottom-edge&&savedLocationsPanel.scrollTop<savedLocationsPanel.scrollHeight-savedLocationsPanel.clientHeight){
+    savedLocationsPanel.scrollTop+=Math.max(2,Math.ceil((drag.clientY-(bounds.bottom-edge))/5));
+  }
+  updateSavedLocationDragGhost(drag);
+  reorderSavedLocationRow(drag.row,drag.clientY);
+  drag.frame=requestAnimationFrame(autoScrollSavedLocationDrag);
+}
+function updateSavedLocationDragGhost(drag){
+  if(!drag.ghost)return;
+  drag.ghost.style.left=`${drag.clientX-drag.offsetX}px`;
+  drag.ghost.style.top=`${drag.clientY-drag.offsetY}px`;
+}
+function finishSavedLocationDrag(pointerId){
+  const drag=savedLocationReorder;
+  if(!drag||drag.pointerId!==pointerId)return;
+  window.removeEventListener('pointermove',drag.moveHandler,true);
+  window.removeEventListener('pointerup',drag.endHandler,true);
+  window.removeEventListener('pointercancel',drag.endHandler,true);
+  if(drag.frame)cancelAnimationFrame(drag.frame);
+  drag.ghost?.remove();
+  drag.row.classList.remove('is-dragging');
+  if(drag.active){
+    const reordered=[...savedLocationsList.querySelectorAll('.saved-location-item')].map(row=>row.savedLocation);
+    const changed=reordered.some((location,index)=>location!==drag.initialOrder[index]);
+    if(changed){
+      savedLocations=reordered;
+      peerSendMessage({type:'document:savedLocations',savedLocations});
+      markDirty();
+      const scrollTop=savedLocationsPanel.scrollTop;
+      renderSavedLocations();
+      savedLocationsPanel.scrollTop=scrollTop;
+    }
+  }
+  savedLocationReorder=null;
+}
 function renderSavedLocations(){
   savedLocationsList.replaceChildren();
   if(!savedLocations.length){
@@ -1784,6 +1801,46 @@ function renderSavedLocations(){
   }
   savedLocations.forEach((location,index)=>{
     const row=document.createElement('div');row.className='saved-location-item';
+    row.savedLocation=location;
+    const dragHandle=document.createElement('button');
+    dragHandle.type='button';
+    dragHandle.className='saved-location-drag-handle';
+    dragHandle.setAttribute('aria-label',`Drag to move ${location.name}`);
+    dragHandle.title='Drag to move';
+    dragHandle.innerHTML='<svg viewBox="0 0 12 18" aria-hidden="true"><circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/><circle cx="3" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/><circle cx="3" cy="15" r="1.5"/><circle cx="9" cy="15" r="1.5"/></svg>';
+    dragHandle.addEventListener('pointerdown',event=>{
+      if(event.button!==0)return;
+      event.preventDefault();
+      const drag={
+        row,pointerId:event.pointerId,clientX:event.clientX,clientY:event.clientY,
+        active:true,initialOrder:savedLocations.slice(),frame:0,
+        offsetX:0,offsetY:0,ghost:null,moveHandler:null,endHandler:null
+      };
+      const bounds=row.getBoundingClientRect();
+      drag.offsetX=event.clientX-bounds.left;
+      drag.offsetY=event.clientY-bounds.top;
+      savedLocationReorder=drag;
+      drag.moveHandler=moveEvent=>{
+        if(moveEvent.pointerId!==drag.pointerId)return;
+        drag.clientX=moveEvent.clientX;
+        drag.clientY=moveEvent.clientY;
+        moveEvent.preventDefault();
+        updateSavedLocationDragGhost(drag);
+        reorderSavedLocationRow(row,moveEvent.clientY);
+      };
+      drag.endHandler=endEvent=>finishSavedLocationDrag(endEvent.pointerId);
+      window.addEventListener('pointermove',drag.moveHandler,true);
+      window.addEventListener('pointerup',drag.endHandler,true);
+      window.addEventListener('pointercancel',drag.endHandler,true);
+      row.classList.add('is-dragging');
+      drag.ghost=row.cloneNode(true);
+      drag.ghost.classList.add('saved-location-drag-ghost');
+      drag.ghost.style.width=`${bounds.width}px`;
+      drag.ghost.style.height=`${bounds.height}px`;
+      document.body.append(drag.ghost);
+      updateSavedLocationDragGhost(drag);
+      drag.frame=requestAnimationFrame(autoScrollSavedLocationDrag);
+    });
     const go=document.createElement('button');go.type='button';go.className='location-go';go.textContent=location.name;
     go.title=`${location.name} · ${Math.round(location.zoom*100).toLocaleString()}%`;
     go.onclick=()=>{
@@ -1792,8 +1849,8 @@ function renderSavedLocations(){
       markCameraDirty();requestRender();savedLocationsPanel.hidden=true;savedLocationsToggle.setAttribute('aria-expanded','false');
     };
     const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.setAttribute('aria-label',`Remove ${location.name}`);
-    remove.onclick=()=>{savedLocations.splice(index,1);renderSavedLocations();markDirty();};
-    row.append(go,remove);savedLocationsList.append(row);
+    remove.onclick=()=>{savedLocations.splice(index,1);renderSavedLocations();peerSendMessage({type:'document:savedLocations',savedLocations});markDirty();};
+    row.append(dragHandle,go,remove);savedLocationsList.append(row);
   });
 }
 function saveCurrentLocation(){
@@ -1802,6 +1859,7 @@ function saveCurrentLocation(){
   const center=screenToWorld(canvasEl.clientWidth/2,canvasEl.clientHeight/2);
   savedLocations.push({name:name.slice(0,60),x:center.x,y:center.y,zoom:camera.zoom});
   locationNameInput.value='';
+  peerSendMessage({type:'document:savedLocations',savedLocations});
   renderSavedLocations();markDirty();
 }
 function updateTransparencySlider(){
@@ -2023,36 +2081,16 @@ savedLocationsToggle.onclick=()=>{
   if(open)locationNameInput.focus();
 };
 canvasMenuToggle.onclick=async()=>{
+  if(peerConnection){setStatus('Disconnect from the shared session before switching canvases.');return;}
   if(!await saveToDB())return;
-  closeCanvasLibrary.disabled=!activeDocumentKey;
   showCanvasLibrary();
 };
-closeCanvasLibrary.onclick=()=>{if(activeDocumentKey){canvasLibrary.hidden=true;canvasMenuToggle.setAttribute('aria-expanded','false');}};
-googleSignInButton.onclick=signInWithGoogle;
-retryCloudSetupButton.onclick=retryCloudSetup;
-signOutButton.onclick=signOut;
-signOutFromLibraryButton.onclick=signOut;
-displayNameForm.addEventListener('submit',async event=>{
-  event.preventDefault();
-  const name=displayNameInput.value.trim().slice(0,60);
-  if(!name){displayNameInput.focus();return;}
-  const previousName=libraryData.displayName;
-  libraryData.displayName=name;
-  try{
-    if(authSession){
-      const {error}=await cloudClient.auth.updateUser({data:{display_name:name}});
-      if(error)throw error;
-    }
-    await writeLibrary();
-    libraryGreeting.textContent=`Hi, ${name}`;
-    renderCanvasLibrary();
+canvasLibrary.addEventListener('click',event=>{
+  if(event.target===canvasLibrary&&activeDocumentKey){
+    canvasLibrary.hidden=true;
+    canvasMenuToggle.setAttribute('aria-expanded','false');
   }
-  catch(error){libraryData.displayName=previousName;setStatus(`Could not save your name: ${error.message}`);}
 });
-contextCreateCanvasButton.onclick=()=>{
-  closeCanvasActions();
-  createCanvasAndOpen();
-};
 contextRenameCanvasButton.onclick=()=>{
   const entry=contextCanvasEntry;
   closeCanvasActions();
@@ -2060,61 +2098,381 @@ contextRenameCanvasButton.onclick=()=>{
     showCanvasNameDialog('rename',entry);
   }
 };
-deleteCanvasesButton.onclick=deleteSelectedCanvases;
+contextDeleteCanvasButton.onclick=()=>{
+  const entry=contextCanvasEntry;
+  closeCanvasActions();
+  if(entry)deleteCanvasEntry(entry);
+};
 canvasNameForm.addEventListener('submit',saveCanvasName);
 cancelCanvasNameButton.onclick=()=>{canvasNameDialog.hidden=true;};
+cancelDuplicateNameButton.onclick=()=>closeDuplicateNameDialog(true);
+keepBothCanvasesButton.onclick=keepBothWithSuffix;
+replaceDuplicateCanvasButton.onclick=replaceDuplicateCanvas;
+const PEER_STUN_SERVERS=[{urls:'stun:stun.l.google.com:19302'}];
+const PEER_CHUNK_SIZE=12000;
+const PEER_MAX_TRANSFER_SIZE=24*1024*1024;
+function setPeerRole(role){
+  const host=role==='host';
+  if(peerRole!==role){
+    peerRole=role;
+    peerSetupGeneration++;
+  }
+  if(peerConnection){
+    if(peerIsHost===host)return;
+    endPeerSession('Previous connection setup cancelled.');
+  }
+  hostPeerPanel.hidden=!host;
+  guestPeerPanel.hidden=host;
+  hostModeTab.classList.toggle('primary',host);
+  guestModeTab.classList.toggle('primary',!host);
+  hostModeTab.setAttribute('aria-pressed',String(host));
+  guestModeTab.setAttribute('aria-pressed',String(!host));
+  setPeerStatus(host?'Create an invitation to host a canvas.':'Paste the host invitation to create a response.');
+}
+function setPeerStatus(message){peerStatus.textContent=message;}
+function peerSignal(description){
+  return JSON.stringify({type:description.type,sdp:description.sdp});
+}
+function parsePeerSignal(value,expectedType){
+  const text=value.trim();
+  if(!text)throw new Error('Paste the other person’s code first.');
+  if(text.length>PEER_MAX_TRANSFER_SIZE)throw new Error('This connection code is too large.');
+  let signal;
+  try{signal=JSON.parse(text);}
+  catch{throw new Error('That code is not valid. Copy the full code without editing it.');}
+  if(!signal||signal.type!==expectedType||typeof signal.sdp!=='string'||!signal.sdp.includes('a='))
+    throw new Error(`This is not a valid WebRTC ${expectedType} code.`);
+  return signal;
+}
+function waitForIceGathering(connection){
+  if(connection.iceGatheringState==='complete')return Promise.resolve();
+  return new Promise((resolve,reject)=>{
+    const finish=(error=null)=>{
+      clearTimeout(timeout);
+      connection.removeEventListener('icegatheringstatechange',check);
+      connection.removeEventListener('connectionstatechange',checkClosed);
+      if(error)reject(error);else resolve();
+    };
+    const check=()=>{
+      if(connection.iceGatheringState!=='complete')return;
+      finish();
+    };
+    const checkClosed=()=>{if(connection.connectionState==='closed')finish(new Error('Connection setup was cancelled.'));};
+    const timeout=setTimeout(()=>finish(new Error('ICE candidates did not finish gathering in time. Check your connection and try again.')),30000);
+    connection.addEventListener('icegatheringstatechange',check);
+    connection.addEventListener('connectionstatechange',checkClosed);
+    check();
+  });
+}
+function copyPeerCode(input,label){
+  input.focus();input.select();
+  if(navigator.clipboard?.writeText){
+    navigator.clipboard.writeText(input.value)
+      .then(()=>setPeerStatus(`${label} copied. Send it privately.`))
+      .catch(error=>setPeerStatus(`Copy failed: ${error.message}. The code is selected for manual copying.`));
+  }else{
+    setPeerStatus(`The ${label.toLowerCase()} is selected. Copy it and send it privately.`);
+  }
+}
+function flushPeerQueue(){
+  if(!peerChannel||peerChannel.readyState!=='open')return;
+  while(peerSendQueue.length&&peerChannel.bufferedAmount<512*1024){
+    try{peerChannel.send(peerSendQueue.shift());}
+    catch(error){setPeerStatus(`Could not send canvas updates: ${error.message}`);return;}
+  }
+}
+function peerSendMessage(message){
+  if(!peerChannel||peerChannel.readyState!=='open')return;
+  const serialized=JSON.stringify(message);
+  if(serialized.length>PEER_MAX_TRANSFER_SIZE){
+    setPeerStatus('This canvas update is too large to send over the direct connection.');
+    return;
+  }
+  if(serialized.length<=PEER_CHUNK_SIZE){
+    peerSendQueue.push(serialized);
+  }else{
+    const id=`${Date.now()}-${++peerTransferSequence}`;
+    const parts=[];
+    let part='';
+    for(const character of serialized){
+      if(part.length+character.length>PEER_CHUNK_SIZE){parts.push(part);part='';}
+      part+=character;
+    }
+    if(part)parts.push(part);
+    for(let index=0;index<parts.length;index++){
+      peerSendQueue.push(JSON.stringify({type:'peer:chunk',id,index,count:parts.length,data:parts[index]}));
+    }
+  }
+  flushPeerQueue();
+}
+function validRemoteStroke(stroke){
+  return Boolean(stroke&&typeof stroke.id==='string'&&stroke.id.length>0&&stroke.id.length<=256&&
+    Array.isArray(stroke.points)&&stroke.points.length>0&&stroke.points.length<=200000&&
+    stroke.points.every(point=>point&&Number.isFinite(point.x)&&Number.isFinite(point.y)));
+}
+function validPeerDocument(payload){
+  return Boolean(payload&&typeof payload==='object'&&Array.isArray(payload.strokes)&&payload.strokes.length<=50000&&
+    payload.strokes.every(validRemoteStroke)&&
+    (!payload.savedLocations||Array.isArray(payload.savedLocations)&&payload.savedLocations.length<=100));
+}
+function applyPeerMessage(message){
+  if(!message||typeof message!=='object'||typeof message.type!=='string')return;
+  if(message.type==='peer:chunk'){
+    if(typeof message.id!=='string'||!Number.isInteger(message.count)||message.count<1||message.count>2200||
+       !Number.isInteger(message.index)||message.index<0||message.index>=message.count||
+       typeof message.data!=='string'||message.data.length>PEER_CHUNK_SIZE)return;
+    let transfer=peerTransfers.get(message.id);
+    if(!transfer){
+      transfer={count:message.count,parts:new Array(message.count),received:0,size:0,timer:setTimeout(()=>peerTransfers.delete(message.id),60000)};
+      peerTransfers.set(message.id,transfer);
+    }
+    if(transfer.count!==message.count||typeof transfer.parts[message.index]!=='undefined')return;
+    transfer.parts[message.index]=message.data;transfer.received++;transfer.size+=message.data.length;
+    if(transfer.size>PEER_MAX_TRANSFER_SIZE){
+      clearTimeout(transfer.timer);peerTransfers.delete(message.id);
+      setPeerStatus('A peer update exceeded the supported transfer size.');
+      return;
+    }
+    if(transfer.received===transfer.count){
+      clearTimeout(transfer.timer);peerTransfers.delete(message.id);
+      try{applyPeerMessage(JSON.parse(transfer.parts.join('')));}
+      catch(error){setPeerStatus(`Could not read a shared canvas update: ${error.message}`);}
+    }
+    return;
+  }
+  if(message.type==='document:init'){
+    if(peerIsHost)return;
+    if(!validPeerDocument(message.payload)){setPeerStatus('The host sent an invalid or oversized canvas.');return;}
+    restorePayload(message.payload);
+    activeDocumentKey=null;
+    dirty=false;selection=null;activeStroke=null;
+    peerReady=true;
+    peerSendMessage({type:'document:ready'});
+    setPeerStatus('Connected. Drawing is shared directly between you.');
+    setStatus('Connected to shared canvas');
+    updateShareButton();requestRender();
+    return;
+  }
+  if(message.type==='document:ready'){
+    if(!peerIsHost)return;
+    setPeerStatus('Connected. Both people can draw together.');
+    setStatus('Connected to shared canvas');
+    return;
+  }
+  if(message.type==='stroke:upsert'){
+    if(!validRemoteStroke(message.stroke)){setPeerStatus('A peer sent an invalid stroke update.');return;}
+    const existing=strokes.get(message.stroke.id);
+    if(existing)unindexStroke(existing);
+    const stroke=cloneStroke(message.stroke);
+    stroke.bounds=stroke.bounds||boundsFor(stroke.points,stroke.width||1);
+    stroke.chunkKeys=keysForBounds(stroke.bounds);
+    strokes.set(stroke.id,stroke);strokeOrderDirty=true;indexStroke(stroke);
+    if(Object.hasOwn(message,'worldFill')){
+      worldFill=message.worldFill&&typeof message.worldFill.color==='string'&&/^#[0-9a-f]{6}$/i.test(message.worldFill.color)
+        ?{color:message.worldFill.color,opacity:clamp(Number(message.worldFill.opacity)||0,0,1)}
+        :null;
+    }
+    markDirty();requestRender();return;
+  }
+  if(message.type==='stroke:remove'&&typeof message.id==='string'){
+    const stroke=strokes.get(message.id);
+    if(stroke){unindexStroke(stroke);strokes.delete(message.id);strokeOrderDirty=true;if(selection)selection.ids=selection.ids.filter(id=>id!==message.id);markDirty();requestRender();}
+    return;
+  }
+  if(message.type==='strokes:replace'&&Array.isArray(message.remove)&&Array.isArray(message.upsert)){
+    for(const id of message.remove){
+      if(typeof id!=='string')continue;
+      const stroke=strokes.get(id);
+      if(stroke){unindexStroke(stroke);strokes.delete(id);}
+    }
+    for(const value of message.upsert){
+      if(!validRemoteStroke(value)){setPeerStatus('A peer sent an invalid stroke update.');continue;}
+      const current=strokes.get(value.id);
+      if(current)unindexStroke(current);
+      const stroke=cloneStroke(value);
+      stroke.bounds=stroke.bounds||boundsFor(stroke.points,stroke.width||1);
+      stroke.chunkKeys=keysForBounds(stroke.bounds);
+      strokes.set(stroke.id,stroke);indexStroke(stroke);
+    }
+    strokeOrderDirty=true;selection=null;
+    if(message.worldFill===null||message.worldFill&&typeof message.worldFill.color==='string'&&/^#[0-9a-f]{6}$/i.test(message.worldFill.color))
+      worldFill=message.worldFill?{color:message.worldFill.color,opacity:clamp(Number(message.worldFill.opacity)||0,0,1)}:null;
+    markDirty();requestRender();return;
+  }
+  if(message.type==='document:appearance'&&typeof message.darkMode==='boolean'){
+    darkMode=message.darkMode;
+    if(message.worldFill===null||message.worldFill&&typeof message.worldFill.color==='string'&&/^#[0-9a-f]{6}$/i.test(message.worldFill.color))
+      worldFill=message.worldFill?{color:message.worldFill.color,opacity:clamp(Number(message.worldFill.opacity)||0,0,1)}:null;
+    updateThemeUI();updateToolUI();markDirty();requestRender();return;
+  }
+  if(message.type==='document:savedLocations'&&Array.isArray(message.savedLocations)){
+    savedLocations=message.savedLocations.filter(location=>location&&typeof location.name==='string'&&Number.isFinite(location.x)&&Number.isFinite(location.y)&&Number.isFinite(location.zoom)).slice(0,100);
+    renderSavedLocations();markDirty();
+  }
+}
+function setupPeerChannel(channel){
+  peerChannel=channel;
+  channel.bufferedAmountLowThreshold=256*1024;
+  channel.onbufferedamountlow=flushPeerQueue;
+  channel.onopen=()=>{
+    if(channel!==peerChannel)return;
+    if(peerIsHost){
+      peerReady=true;
+      peerSendMessage({type:'document:init',payload:currentPayload()});
+      setPeerStatus('Connected. Sending canvas to guest…');
+      updateShareButton();
+    }
+  };
+  channel.onmessage=event=>{
+    if(channel!==peerChannel)return;
+    try{applyPeerMessage(JSON.parse(event.data));}
+    catch(error){setPeerStatus(`Could not process a connection update: ${error.message}`);}
+  };
+  channel.onerror=()=>setPeerStatus('The direct connection reported a data-channel error.');
+  channel.onclose=()=>{if(channel===peerChannel)endPeerSession('Peer disconnected.');};
+}
+function createPeerConnection(isHost){
+  if(!window.RTCPeerConnection)throw new Error('This browser does not support WebRTC.');
+  if(!window.isSecureContext)throw new Error('WebRTC requires a secure website (HTTPS) or localhost.');
+  peerIsHost=isHost;
+  peerReady=false;
+  peerSendQueue=[];
+  peerTransfers.clear();
+  peerConnection=new RTCPeerConnection({iceServers:PEER_STUN_SERVERS});
+  disconnectPeerButton.hidden=false;
+  const connection=peerConnection;
+  connection.onconnectionstatechange=()=>{
+    if(connection!==peerConnection)return;
+    if(connection.connectionState==='failed')
+      setPeerStatus('Connection failed. This network may require a TURN relay; this app uses STUN only.');
+    else if(connection.connectionState==='disconnected')
+      setPeerStatus('Connection interrupted. Waiting for the network to recover…');
+  };
+  connection.oniceconnectionstatechange=()=>{
+    if(connection===peerConnection&&connection.iceConnectionState==='failed')
+      setPeerStatus('Could not establish a direct route. Some Wi-Fi, mobile, school, or work networks block STUN-only connections.');
+  };
+  return connection;
+}
+async function createHostOffer(){
+  if(peerConnection){setPeerStatus('Disconnect from the current peer before creating another invitation.');return;}
+  const setupGeneration=peerSetupGeneration;
+  createOfferButton.disabled=true;
+  offerCodeInput.value='Gathering direct-connection details…';
+  let connection=null;
+  try{
+    if(!await saveToDB())throw new Error('The canvas could not be saved locally.');
+    if(setupGeneration!==peerSetupGeneration)return;
+    if(peerConnection)endPeerSession('Previous connection closed.');
+    connection=createPeerConnection(true);
+    const channel=connection.createDataChannel('infinite-canvas',{ordered:true});
+    setupPeerChannel(channel);
+    const offer=await connection.createOffer();
+    await connection.setLocalDescription(offer);
+    await waitForIceGathering(connection);
+    if(connection!==peerConnection||setupGeneration!==peerSetupGeneration)return;
+    offerCodeInput.value=peerSignal(connection.localDescription);
+    copyOfferCodeButton.disabled=false;
+    connectAnswerButton.disabled=false;
+    setPeerStatus('Invitation ready. Send it privately to one guest.');
+  }catch(error){
+    if(setupGeneration!==peerSetupGeneration||connection&&connection!==peerConnection)return;
+    offerCodeInput.value='';
+    copyOfferCodeButton.disabled=true;
+    endPeerSession(`Could not create invitation: ${error.message}`);
+  }finally{if(setupGeneration===peerSetupGeneration&&(!connection||connection===peerConnection))createOfferButton.disabled=Boolean(peerConnection);}
+}
+async function createGuestAnswer(){
+  if(peerConnection){setPeerStatus('Disconnect from the current peer before joining another.');return;}
+  const setupGeneration=peerSetupGeneration;
+  createAnswerButton.disabled=true;
+  guestAnswerCodeInput.value='Gathering direct-connection details…';
+  let connection=null;
+  try{
+    const offer=parsePeerSignal(guestOfferCodeInput.value,'offer');
+    if(setupGeneration!==peerSetupGeneration)return;
+    if(peerConnection)endPeerSession('Previous connection closed.');
+    if(!await saveToDB())throw new Error('The local canvas could not be saved.');
+    peerPreviousDocument=currentPayload();
+    peerPreviousDocumentKey=activeDocumentKey;
+    connection=createPeerConnection(false);
+    connection.ondatachannel=event=>setupPeerChannel(event.channel);
+    await connection.setRemoteDescription(offer);
+    const answer=await connection.createAnswer();
+    await connection.setLocalDescription(answer);
+    await waitForIceGathering(connection);
+    if(connection!==peerConnection||setupGeneration!==peerSetupGeneration)return;
+    guestAnswerCodeInput.value=peerSignal(connection.localDescription);
+    copyAnswerCodeButton.disabled=false;
+    setPeerStatus('Response ready. Send it privately to the host, then wait for connection.');
+  }catch(error){
+    if(setupGeneration!==peerSetupGeneration||connection&&connection!==peerConnection)return;
+    guestAnswerCodeInput.value='';
+    endPeerSession(`Could not create response: ${error.message}`);
+  }finally{if(setupGeneration===peerSetupGeneration&&(!connection||connection===peerConnection))createAnswerButton.disabled=Boolean(peerConnection);}
+}
+async function connectToGuest(){
+  if(!peerConnection||!peerIsHost){setPeerStatus('Create an invitation first.');return;}
+  connectAnswerButton.disabled=true;
+  try{
+    const answer=parsePeerSignal(answerCodeInput.value,'answer');
+    await peerConnection.setRemoteDescription(answer);
+    setPeerStatus('Answer accepted. Connecting directly…');
+  }catch(error){
+    setPeerStatus(`Could not connect: ${error.message}`);
+    connectAnswerButton.disabled=false;
+  }
+}
+function endPeerSession(message='Disconnected.'){
+  const connection=peerConnection,channel=peerChannel,wasGuest=Boolean(peerPreviousDocument);
+  peerConnection=null;peerChannel=null;peerReady=false;peerSendQueue=[];
+  for(const transfer of peerTransfers.values())clearTimeout(transfer.timer);
+  peerTransfers.clear();
+  if(channel){channel.onclose=null;channel.onmessage=null;channel.onopen=null;try{channel.close();}catch{}}
+  if(connection){
+    connection.onconnectionstatechange=null;connection.oniceconnectionstatechange=null;connection.ondatachannel=null;
+    try{connection.close();}catch{}
+  }
+  if(wasGuest&&peerPreviousDocument){
+    restorePayload(peerPreviousDocument);
+    activeDocumentKey=peerPreviousDocumentKey;
+    dirty=false;selection=null;activeStroke=null;
+    peerPreviousDocument=null;peerPreviousDocumentKey=null;
+    requestRender();
+  }
+  if(peerIsHost&&dirty)saveToDB();
+  peerIsHost=false;
+  updateShareButton();
+  hostModeTab.disabled=false;guestModeTab.disabled=false;
+  createOfferButton.disabled=false;createAnswerButton.disabled=false;
+  copyOfferCodeButton.disabled=true;copyAnswerCodeButton.disabled=true;connectAnswerButton.disabled=true;
+  disconnectPeerButton.hidden=true;
+  setPeerStatus(message);
+}
 shareCanvasButton.onclick=async()=>{
-  const entry=libraryData.canvases.find(item=>item.key===activeDocumentKey);
-  if(!entry||!authSession||!cloudReady)return;
-  if(!await saveToDB())return;
-  const previousCode=entry.shareCode;
-  try{
-    if(!entry.shareCode)entry.shareCode=makeShareCode();
-    const payload=await readStoredValue(entry.key);
-    if(!payload)throw new Error('Canvas data is missing.');
-    await writeLibrary();
-    await upsertCloudCanvas(entry,payload);
-    const link=new URL(location.href);
-    link.searchParams.set('room',entry.shareCode);
-    link.hash='';
-    shareLinkInput.value=link.href;
-    sharedRoomName=entry.name;
-    shareOverlay.hidden=false;
-    shareLinkInput.focus();
-    shareLinkInput.select();
-    if(location.protocol==='file:'||['localhost','127.0.0.1','::1'].includes(location.hostname)){
-      setStatus('To share this room, host the app at a public HTTPS address first.');
-    }
-  }catch(error){
-    entry.shareCode=previousCode||'';
-    try{await writeLibrary();}catch(storageError){setStatus(`Could not save room code: ${storageError.message}`);return;}
-    setStatus(`Could not create room link: ${error.message}`);
+  if(!activeDocumentKey)return;
+  shareOverlay.hidden=false;
+  disconnectPeerButton.hidden=!peerConnection;
+  if(peerConnection){
+    setPeerRole(peerIsHost?'host':'guest');
+    setPeerStatus(peerReady?'Connected. Both people can draw together.':'Connection setup in progress…');
+  }else{
+    if(peerRole==='host')await createHostOffer();
+    else setPeerStatus('Paste the host invitation and create your response.');
   }
 };
-copyShareLinkButton.onclick=async()=>{
-  try{
-    if(navigator.share){
-      await navigator.share({title:sharedRoomName||'Infinite Canvas',text:'Join my shared canvas',url:shareLinkInput.value});
-      setStatus('Shared canvas link sent');
-    }else{
-      await navigator.clipboard.writeText(shareLinkInput.value);
-      setStatus('Shared canvas link copied');
-    }
-  }catch(error){
-    if(error.name==='AbortError')return;
-    shareLinkInput.focus();
-    shareLinkInput.select();
-    setStatus(`Could not share the room link: ${error.message}. The link is selected for manual copying.`);
-  }
-};
+hostModeTab.disabled=Boolean(peerConnection);
+guestModeTab.disabled=Boolean(peerConnection);
+hostModeTab.onclick=()=>setPeerRole('host');
+guestModeTab.onclick=()=>setPeerRole('guest');
+createOfferButton.onclick=createHostOffer;
+createAnswerButton.onclick=createGuestAnswer;
+connectAnswerButton.onclick=connectToGuest;
+copyOfferCodeButton.onclick=()=>copyPeerCode(offerCodeInput,'Invitation');
+copyAnswerCodeButton.onclick=()=>copyPeerCode(guestAnswerCodeInput,'Response');
+disconnectPeerButton.onclick=()=>endPeerSession();
 closeShareDialogButton.onclick=()=>{shareOverlay.hidden=true;};
 shareOverlay.addEventListener('click',event=>{if(event.target===shareOverlay)shareOverlay.hidden=true;});
-function makeShareCode(){
-  if(!globalThis.crypto?.getRandomValues)throw new Error('Secure room codes are unavailable in this browser.');
-  const bytes=new Uint8Array(32);
-  globalThis.crypto.getRandomValues(bytes);
-  return Array.from(bytes,value=>value.toString(16).padStart(2,'0')).join('').toUpperCase();
-}
 saveLocationButton.onclick=saveCurrentLocation;
 locationNameInput.addEventListener('keydown',e=>{if(e.key==='Enter')saveCurrentLocation();});
 document.getElementById('undo').onclick=undo;
@@ -2123,6 +2481,7 @@ themeToggle.onclick=()=>{
   darkMode=!darkMode;
   updateThemeUI();
   updateToolUI();
+  peerSendMessage({type:'document:appearance',darkMode,worldFill});
   markDirty();
   requestRender();
 };
@@ -2188,46 +2547,13 @@ window.addEventListener('beforeunload',()=>{if(dirty&&db)saveToDB();});
     camera={x:canvasEl.clientWidth/2,y:canvasEl.clientHeight/2,zoom:DEFAULT_ZOOM};
   }catch(error){
     showCanvasLibrary();
-    setStatus(`Local database unavailable · ${error.message}`);
+    setStatus(`Browser storage unavailable · ${error.message}`);
     requestRender();updateButtons();
     return;
   }
-  if(!window.supabase?.createClient){
-    showCanvasLibrary();
-    authMessage.textContent='Supabase could not load. Check your internet connection and reload.';
-    setStatus('Cloud sign-in library unavailable');
-    requestRender();updateButtons();
-    return;
-  }
-  try{
-    cloudClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
-    cloudClient.auth.onAuthStateChange((_event,session)=>{authSession=session;});
-    const {data,error}=await cloudClient.auth.getSession();
-    if(error)throw error;
-    const roomCode=new URLSearchParams(location.search).get('room');
-    if(roomCode){
-      authSession=null;
-      try{
-        await openSharedRoom(roomCode);
-      }catch(roomError){
-        showCanvasLibrary();
-        authMessage.textContent=`Could not open shared canvas: ${roomError.message}`;
-        setStatus(`Could not open shared canvas · ${roomError.message}`);
-      }
-    }else if(data.session){
-      await startCloudSession(data.session);
-      closeCanvasLibrary.disabled=!activeDocumentKey;
-    }else{
-      authSession=null;
-      showCanvasLibrary();
-      closeCanvasLibrary.disabled=true;
-      setStatus('Sign in to sync your private canvases');
-    }
-  }catch(error){
-    showCanvasLibrary();
-    authMessage.textContent=`Could not connect to Supabase: ${error.message}`;
-    setStatus(`Sign-in unavailable · ${error.message}`);
-  }
+  showCanvasLibrary();
+  setStatus('Ready · canvases are stored in this browser');
+  updateShareButton();
   requestRender();updateButtons();
 })();
 })();
