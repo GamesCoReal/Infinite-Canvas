@@ -99,10 +99,13 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:no
 .canvas-card.selected{box-shadow:0 0 0 2px #526ee8}
 .canvas-card-preview{display:block;width:100%;aspect-ratio:1;border-radius:7px;background:#f7f8fa}
 .canvas-card-name{display:block;overflow:hidden;padding:8px 2px 2px;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
-.create-canvas-card{display:block;width:100%;padding:8px;border:1px solid #ffffff24;border-radius:12px;background:#20232c;color:#f5f6fa;text-align:left;cursor:pointer;touch-action:manipulation}
-.create-canvas-card:hover{border-color:#8da0ff;background:#282e40}
-.create-canvas-preview{display:grid;place-items:center;width:100%;aspect-ratio:1;border-radius:7px;background:#555b66;color:#e9edf4;font-size:64px;font-weight:300;line-height:1}
-.create-canvas-label{display:block;padding:8px 2px 2px;font-size:13px}
+.empty-canvas-card{display:block;width:100%;padding:8px;border:1px dashed #ffffff30;border-radius:12px;background:#20232c;color:#aeb6c5;text-align:left;cursor:context-menu;touch-action:manipulation;user-select:none}
+.empty-canvas-preview{display:grid;place-items:center;width:100%;aspect-ratio:1;border-radius:7px;background:#555b66}
+.empty-canvas-label{display:block;padding:8px 2px 2px;font-size:12px}
+.canvas-context-menu{position:absolute;z-index:30;min-width:176px;padding:5px;border:1px solid #ffffff24;border-radius:10px;background:#20232c;color:#f5f6fa;box-shadow:0 12px 32px #0008}
+.canvas-context-menu[hidden]{display:none}
+.canvas-context-menu button{display:block;width:100%;padding:9px 10px;border:0;border-radius:6px;background:transparent;color:inherit;text-align:left;font:inherit;font-size:13px;cursor:pointer}
+.canvas-context-menu button:hover,.canvas-context-menu button:focus-visible{outline:none;background:#343b4c}
 .name-setup{max-width:480px;margin:auto}
 .name-setup label,.canvas-name-dialog label{display:block;margin:16px 0 6px;color:#c8ceda;font-size:13px}
 .name-setup input,.canvas-name-dialog input{width:100%;padding:11px;border:1px solid #ffffff30;border-radius:9px;background:#252a36;color:#f5f6fa;font:inherit}
@@ -254,12 +257,14 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:no
         <div id="libraryContent" hidden>
           <div class="library-header"><h1 id="libraryGreeting">Your canvases</h1><div class="library-actions"><button id="signOutFromLibrary" class="library-button" type="button">Sign out</button><button id="closeCanvasLibrary" class="library-button" type="button">Back to canvas</button></div></div>
           <div class="library-actions">
-            <button id="createCanvas" class="library-button primary" type="button">Create canvas</button>
-            <button id="renameCanvas" class="library-button" type="button" disabled>Rename</button>
             <button id="deleteCanvases" class="library-button" type="button" disabled>Delete selected</button>
           </div>
-          <p class="canvas-library-hint">Click a canvas to open it. Press and hold a canvas to select it; then click others to select more.</p>
+          <p class="canvas-library-hint">Click a canvas to open it. Right-click a canvas for actions. Press and hold tiles to select canvases for deletion.</p>
           <div id="canvasGrid" class="canvas-grid"></div>
+          <div id="canvasContextMenu" class="canvas-context-menu" role="menu" aria-label="Canvas actions" hidden>
+            <button id="contextRenameCanvas" type="button" role="menuitem">Rename canvas</button>
+            <button id="contextCreateCanvas" type="button" role="menuitem">Create canvas</button>
+          </div>
         </div>
       </div>
     </section>
@@ -339,9 +344,10 @@ const libraryContent = document.getElementById('libraryContent');
 const libraryGreeting = document.getElementById('libraryGreeting');
 const canvasGrid = document.getElementById('canvasGrid');
 const closeCanvasLibrary = document.getElementById('closeCanvasLibrary');
-const createCanvasButton = document.getElementById('createCanvas');
-const renameCanvasButton = document.getElementById('renameCanvas');
 const deleteCanvasesButton = document.getElementById('deleteCanvases');
+const canvasContextMenu = document.getElementById('canvasContextMenu');
+const contextRenameCanvasButton = document.getElementById('contextRenameCanvas');
+const contextCreateCanvasButton = document.getElementById('contextCreateCanvas');
 const canvasNameDialog = document.getElementById('canvasNameDialog');
 const canvasNameDialogTitle = document.getElementById('canvasNameDialogTitle');
 const canvasNameForm = document.getElementById('canvasNameForm');
@@ -390,6 +396,7 @@ let sharedRoomCode = null;
 let sharedRoomName = '';
 let libraryData = {displayName:'',canvases:[]};
 let selectedCanvasIds = new Set();
+let contextCanvasEntry = null;
 let canvasHoldTimer = null;
 let canvasNameDialogMode = 'create';
 let canvasNameDialogTarget = null;
@@ -876,20 +883,66 @@ function renderCanvasLibrary(){
       }
       activateCanvas(entry.id);
     });
-    card.addEventListener('contextmenu',event=>event.preventDefault());
+    card.addEventListener('contextmenu',event=>showCanvasActions(event,entry,card));
+    card.addEventListener('keydown',event=>{
+      if(event.key==='ContextMenu'||(event.shiftKey&&event.key==='F10')){
+        showCanvasActions(event,entry,card);
+      }
+    });
     canvasGrid.append(card);
   }
   if(!libraryData.canvases.length){
-    const createCard=document.createElement('button');
-    createCard.type='button';createCard.className='create-canvas-card';createCard.setAttribute('aria-label','Create a canvas');
-    const preview=document.createElement('span');preview.className='create-canvas-preview';preview.setAttribute('aria-hidden','true');preview.textContent='+';
-    const label=document.createElement('span');label.className='create-canvas-label';label.textContent='Create canvas';
-    createCard.append(preview,label);
-    createCard.onclick=createCanvasAndOpen;
-    canvasGrid.append(createCard);
+    const emptyCard=document.createElement('div');
+    emptyCard.className='empty-canvas-card';
+    emptyCard.setAttribute('role','button');
+    emptyCard.tabIndex=0;
+    emptyCard.setAttribute('aria-label','Open canvas actions to create a canvas');
+    const preview=document.createElement('span');preview.className='empty-canvas-preview';preview.setAttribute('aria-hidden','true');
+    const label=document.createElement('span');label.className='empty-canvas-label';label.textContent='Open actions to create a canvas';
+    emptyCard.append(preview,label);
+    emptyCard.addEventListener('contextmenu',event=>showCanvasActions(event,null,emptyCard));
+    emptyCard.addEventListener('click',event=>showCanvasActions(event,null,emptyCard));
+    emptyCard.addEventListener('keydown',event=>{
+      if(event.key==='Enter'||event.key===' '||event.key==='ContextMenu'||(event.shiftKey&&event.key==='F10')){
+        event.preventDefault();
+        showCanvasActions(event,null,emptyCard);
+      }
+    });
+    canvasGrid.append(emptyCard);
   }
   refreshCanvasSelection();
 }
+function showCanvasActions(event,entry,anchor){
+  event.preventDefault();
+  event.stopPropagation();
+  contextCanvasEntry=entry;
+  contextRenameCanvasButton.hidden=!entry;
+  canvasContextMenu.hidden=false;
+  const bounds=anchor.getBoundingClientRect();
+  const libraryBounds=canvasLibrary.getBoundingClientRect();
+  const clientX=Number.isFinite(event.clientX)&&event.clientX?event.clientX:bounds.left+bounds.width/2;
+  const clientY=Number.isFinite(event.clientY)&&event.clientY?event.clientY:bounds.top+bounds.height/2;
+  requestAnimationFrame(()=>{
+    const menuWidth=canvasContextMenu.offsetWidth;
+    const menuHeight=canvasContextMenu.offsetHeight;
+    const left=Math.max(8,Math.min(clientX-libraryBounds.left,libraryBounds.width-menuWidth-8));
+    const top=Math.max(8,Math.min(clientY-libraryBounds.top,libraryBounds.height-menuHeight-8));
+    canvasContextMenu.style.left=`${left}px`;
+    canvasContextMenu.style.top=`${top}px`;
+    (entry?contextRenameCanvasButton:contextCreateCanvasButton).focus();
+  });
+}
+function closeCanvasActions(){
+  canvasContextMenu.hidden=true;
+  contextCanvasEntry=null;
+}
+canvasGrid.addEventListener('contextmenu',event=>showCanvasActions(event,null,canvasGrid));
+document.addEventListener('pointerdown',event=>{
+  if(!canvasContextMenu.hidden&&!canvasContextMenu.contains(event.target))closeCanvasActions();
+});
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&!canvasContextMenu.hidden)closeCanvasActions();
+});
 function drawCanvasPreview(canvas,payload){
   const preview=canvas.getContext('2d');
   const size=canvas.width;
@@ -931,7 +984,6 @@ function refreshCanvasSelection(){
     card.setAttribute('aria-pressed',String(selectedCanvasIds.has(card.dataset.canvasId)));
   }
   const count=selectedCanvasIds.size;
-  renameCanvasButton.disabled=count!==1;
   deleteCanvasesButton.disabled=count===0;
   deleteCanvasesButton.textContent=count?`Delete selected (${count})`:'Delete selected';
 }
@@ -1997,11 +2049,16 @@ displayNameForm.addEventListener('submit',async event=>{
   }
   catch(error){libraryData.displayName=previousName;setStatus(`Could not save your name: ${error.message}`);}
 });
-createCanvasButton.onclick=createCanvasAndOpen;
-renameCanvasButton.onclick=()=>{
-  if(selectedCanvasIds.size!==1)return;
-  const id=[...selectedCanvasIds][0];
-  showCanvasNameDialog('rename',libraryData.canvases.find(entry=>entry.id===id));
+contextCreateCanvasButton.onclick=()=>{
+  closeCanvasActions();
+  createCanvasAndOpen();
+};
+contextRenameCanvasButton.onclick=()=>{
+  const entry=contextCanvasEntry;
+  closeCanvasActions();
+  if(entry&&libraryData.canvases.some(item=>item.id===entry.id)){
+    showCanvasNameDialog('rename',entry);
+  }
 };
 deleteCanvasesButton.onclick=deleteSelectedCanvases;
 canvasNameForm.addEventListener('submit',saveCanvasName);
@@ -2131,7 +2188,6 @@ window.addEventListener('beforeunload',()=>{if(dirty&&db)saveToDB();});
     camera={x:canvasEl.clientWidth/2,y:canvasEl.clientHeight/2,zoom:DEFAULT_ZOOM};
   }catch(error){
     showCanvasLibrary();
-    createCanvasButton.disabled=true;
     setStatus(`Local database unavailable · ${error.message}`);
     requestRender();updateButtons();
     return;
