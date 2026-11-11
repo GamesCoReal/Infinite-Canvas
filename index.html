@@ -1651,7 +1651,13 @@ function endPointer(e){
 }
 canvasEl.addEventListener('pointerup',endPointer);
 canvasEl.addEventListener('pointercancel',endPointer);
-canvasEl.addEventListener('wheel',e=>{e.preventDefault();const p=eventPos(e);zoomAt(p.x,p.y,Math.pow(1.0001,-e.deltaY/100));},{passive:false});
+canvasEl.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const p=eventPos(e);
+  const unit=e.deltaMode===1?16:e.deltaMode===2?canvasEl.clientHeight:1;
+  const dy=clamp(e.deltaY*unit,-300,300);
+  zoomAt(p.x,p.y,Math.exp(-dy*0.00005));
+},{passive:false});
 window.addEventListener('keydown',e=>{
   if(!duplicateNameOverlay.hidden&&e.key==='Escape'){
     closeDuplicateNameDialog(true);
