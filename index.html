@@ -1,0 +1,2096 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#111318">
+  <title>Infinite Canvas</title>
+  <style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111318;color:#e9edf4;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+#app{position:relative;width:100%;height:100%;overflow:hidden}
+#canvas{display:block;width:100%;height:100%;touch-action:none;cursor:none;background-color:#f7f8fa}
+.tool-tray{--tool-size:56px;--tool-gap:8px;position:absolute;z-index:3;left:calc(50% - var(--tool-size)/2);bottom:22px;width:var(--tool-size);height:56px;overflow:visible}
+.tool-tray.expanded{--tool-size:48px;--tool-gap:6px;height:var(--tool-size);width:calc(50vw - 98px);overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.tool-tray.expanded::-webkit-scrollbar{display:none}
+.tool-choice{position:absolute;top:0;left:0;display:grid;place-items:center;width:var(--tool-size);height:var(--tool-size);padding:14px;border:1px solid #ffffff30;border-radius:50%;background:#171a22ed;color:#f5f6fa;box-shadow:0 8px 30px #0003;cursor:pointer;backdrop-filter:blur(12px);transition:opacity .2s ease,transform .24s ease,background .15s ease,border-color .15s ease}
+.tool-choice svg{display:block;width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tool-choice:hover{background:#252a36}
+.tool-choice.is-current{border-color:#8da0ff;background:#526ee8}
+.tool-choice[aria-pressed=true]:not(.is-current){border-color:#8da0ff}
+.tool-color-indicator{position:absolute;right:7px;bottom:7px;width:12px;height:12px;border:2px solid #171a22;border-radius:50%;background:#202124}
+.tool-choice[data-tool=eraser] .tool-color-indicator{display:none}
+.tool-choice:not(.is-current){opacity:0;transform:translateX(0);pointer-events:none}
+.tool-tray.expanded .tool-choice:not(.is-current){opacity:1;pointer-events:auto}
+.tool-settings{position:absolute;z-index:4;left:50%;bottom:92px;width:min(280px,calc(100vw - 24px));padding:14px 14px 88px;border:1px solid #ffffff22;border-radius:14px;background:#171a22ed;box-shadow:0 8px 30px #0003;transform:translateX(-50%);backdrop-filter:blur(12px)}
+.tool-settings[hidden]{display:none}
+.tool-settings [hidden]{display:none!important}
+.tool-settings h2{margin:0 0 12px;color:#f5f6fa;font-size:14px}
+.setting-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;color:#c8ceda;font-size:12px}
+.setting-row input[type=color]{width:42px;height:30px;padding:2px;border:1px solid #ffffff24;border-radius:7px;background:#252a36;cursor:pointer}
+.size-setting input[type=range]{width:152px;accent-color:#8da7ff}
+.size-setting output{min-width:20px;text-align:right;font-variant-numeric:tabular-nums}
+.brush-size-control{position:absolute;right:14px;bottom:12px;display:grid;place-items:center;width:64px;height:64px;border:1px dashed #ffffff45;border-radius:50%;cursor:ns-resize;touch-action:none;user-select:none}
+.brush-size-control:focus-visible{outline:2px solid #9db0ff;outline-offset:3px}
+.brush-size-circle{display:block;max-width:48px;max-height:48px;border:2px solid var(--brush-ring-color,#202124);border-radius:50%;box-shadow:0 0 0 1px #ffffff90;opacity:.72;pointer-events:none}
+.rotation-setting{gap:6px}
+.rotation-setting label{flex:none}
+.rotation-setting input[type=range]{width:86px;accent-color:#8da7ff}
+.rotation-setting output{min-width:32px;text-align:right;font-variant-numeric:tabular-nums}
+.rotation-preview{display:block;flex:none;width:8px;height:24px;border:1px solid #ffffff80;border-radius:4px 4px 2px 2px;clip-path:polygon(50% 0,100% 20%,100% 100%,0 100%,0 20%);transform-origin:center;transition:transform .08s linear}
+.rotation-setting button,.location-save-row button,.saved-location-item button{padding:6px 8px;border:1px solid #ffffff24;border-radius:7px;background:#252a36;color:#f5f6fa;font:inherit;font-size:11px;cursor:pointer}
+.rotation-setting button:hover,.location-save-row button:hover,.saved-location-item button:hover{background:#343b4c}
+.fill-setting{display:flex;align-items:center;gap:8px;margin-top:12px;color:#c8ceda;font-size:12px}
+.fill-setting input{accent-color:#8da7ff}
+.transparency-slider{position:relative;display:block;width:100%;height:28px;overflow:hidden;border:1px solid #ffffff30;border-radius:14px}
+.transparency-slider canvas{position:absolute;inset:0;display:block;width:100%;height:100%}
+.transparency-slider input{position:absolute;inset:0;z-index:1;width:100%;height:100%;margin:0;appearance:none;background:transparent;cursor:ew-resize}
+.transparency-slider input::-webkit-slider-runnable-track{height:28px;background:transparent}
+.transparency-slider input::-moz-range-track{height:28px;background:transparent}
+.transparency-slider input::-webkit-slider-thumb{width:0;height:28px;appearance:none;border:0;background:transparent}
+.transparency-slider input::-moz-range-thumb{width:0;height:0;border:0;background:transparent}
+.history-controls{position:absolute;z-index:5;right:18px;bottom:18px;display:flex;gap:8px}
+.history-controls button{display:grid;place-items:center;width:42px;height:42px;padding:10px;border:1px solid #ffffff24;border-radius:50%;background:#171a22ed;color:#f5f6fa;box-shadow:0 8px 24px #0003;cursor:pointer;backdrop-filter:blur(12px)}
+.history-controls button:hover:not(:disabled){background:#343b4c}
+.history-controls button:disabled{opacity:.35;cursor:default}
+.history-controls svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.tool-choice:focus-visible,.tool-settings button:focus-visible{outline:2px solid #9db0ff;outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.theme-toggle{position:absolute;z-index:5;top:18px;right:18px;display:flex;align-items:center;gap:8px;padding:8px 11px;border:1px solid #ffffff24;border-radius:9px;background:#171a22dd;color:#e9edf4;font:inherit;font-size:12px;cursor:pointer;backdrop-filter:blur(12px)}
+.theme-toggle:hover,.theme-toggle[aria-pressed=true]{background:#252a36}
+.theme-toggle svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.theme-toggle:focus-visible{outline:2px solid #9db0ff;outline-offset:2px}
+.saved-locations-toggle{position:absolute;z-index:5;top:96px;left:18px;padding:8px 11px;border:1px solid #ffffff24;border-radius:9px;background:#171a22dd;color:#e9edf4;font:inherit;font-size:12px;cursor:pointer;backdrop-filter:blur(12px)}
+.saved-locations-toggle:hover,.saved-locations-toggle[aria-expanded=true]{background:#252a36}
+.saved-locations-panel{position:absolute;z-index:6;top:136px;left:18px;width:min(320px,calc(100vw - 36px));max-height:min(65vh,480px);overflow:auto;padding:14px;border:1px solid #ffffff24;border-radius:12px;background:#171a22ed;color:#e9edf4;box-shadow:0 8px 30px #0003;backdrop-filter:blur(12px)}
+.saved-locations-panel[hidden]{display:none}
+.saved-locations-panel h2{margin:0 0 12px;font-size:14px}
+.saved-locations-list{display:grid;gap:6px;margin-bottom:12px}
+.saved-location-item{display:flex;align-items:center;gap:6px}
+.saved-location-item .location-go{flex:1;overflow:hidden;text-align:left;text-overflow:ellipsis;white-space:nowrap}
+.saved-location-empty{margin:0 0 12px;color:#c8ceda;font-size:12px}
+.location-name-label{display:block;margin-bottom:5px;color:#c8ceda;font-size:11px}
+.location-save-row{display:flex;gap:6px}
+.location-save-row input{min-width:0;flex:1;padding:7px 8px;border:1px solid #ffffff24;border-radius:7px;background:#252a36;color:#f5f6fa;font:inherit;font-size:12px}
+.location-save-row button{white-space:nowrap}
+.help{position:absolute;left:18px;bottom:92px;padding:8px 11px;border-radius:9px;background:#171a22dd;color:#cbd1dc;font-size:12px;pointer-events:none}
+.zoom{position:absolute;right:18px;bottom:72px;padding:8px 11px;border-radius:9px;background:#171a22dd;color:#e9edf4;font-size:12px;font-variant-numeric:tabular-nums}
+#status{position:absolute;top:58px;left:18px;padding:6px 9px;border-radius:8px;background:#171a22d9;color:#d7deeb;font-size:11px;pointer-events:none}
+.canvas-menu-toggle{position:absolute;z-index:5;top:18px;left:18px;padding:8px 11px;border:1px solid #ffffff24;border-radius:9px;background:#171a22dd;color:#e9edf4;font:inherit;font-size:12px;cursor:pointer;backdrop-filter:blur(12px)}
+.canvas-menu-toggle:hover{background:#252a36}
+.share-canvas-toggle{position:absolute;z-index:5;top:18px;right:126px;padding:8px 11px;border:1px solid #ffffff24;border-radius:9px;background:#171a22dd;color:#e9edf4;font:inherit;font-size:12px;cursor:pointer;backdrop-filter:blur(12px)}
+.share-canvas-toggle:hover:not(:disabled){background:#252a36}
+.share-canvas-toggle:disabled{opacity:.42;cursor:default}
+.canvas-library{position:absolute;inset:0;z-index:20;display:grid;place-items:center;padding:24px;background:#0d0f14eF;backdrop-filter:blur(10px)}
+.canvas-library[hidden]{display:none}
+.canvas-library-panel{width:min(920px,100%);max-height:min(90vh,900px);overflow:auto;padding:24px;border:1px solid #ffffff24;border-radius:18px;background:#171a22;color:#e9edf4;box-shadow:0 20px 70px #0008}
+.canvas-library h1{margin:0;font-size:24px}
+.canvas-library p{color:#b9c0cd}
+.library-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+.library-actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 18px}
+.library-button{padding:9px 13px;border:1px solid #ffffff24;border-radius:9px;background:#252a36;color:#f5f6fa;font:inherit;font-size:13px;cursor:pointer}
+.library-button:hover:not(:disabled){background:#343b4c}
+.library-button.primary{background:#526ee8;border-color:#8194ff}
+.library-button:disabled{opacity:.42;cursor:default}
+.canvas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
+.canvas-card{min-width:0;padding:8px;border:1px solid #ffffff24;border-radius:12px;background:#20232c;color:#f5f6fa;text-align:left;cursor:pointer;touch-action:manipulation;user-select:none}
+.canvas-card:hover,.canvas-card.selected{border-color:#8da0ff;background:#282e40}
+.canvas-card.selected{box-shadow:0 0 0 2px #526ee8}
+.canvas-card-preview{display:block;width:100%;aspect-ratio:1;border-radius:7px;background:#f7f8fa}
+.canvas-card-name{display:block;overflow:hidden;padding:8px 2px 2px;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.create-canvas-card{display:block;width:100%;padding:8px;border:1px solid #ffffff24;border-radius:12px;background:#20232c;color:#f5f6fa;text-align:left;cursor:pointer;touch-action:manipulation}
+.create-canvas-card:hover{border-color:#8da0ff;background:#282e40}
+.create-canvas-preview{display:grid;place-items:center;width:100%;aspect-ratio:1;border-radius:7px;background:#555b66;color:#e9edf4;font-size:64px;font-weight:300;line-height:1}
+.create-canvas-label{display:block;padding:8px 2px 2px;font-size:13px}
+.name-setup{max-width:480px;margin:auto}
+.name-setup label,.canvas-name-dialog label{display:block;margin:16px 0 6px;color:#c8ceda;font-size:13px}
+.name-setup input,.canvas-name-dialog input{width:100%;padding:11px;border:1px solid #ffffff30;border-radius:9px;background:#252a36;color:#f5f6fa;font:inherit}
+.canvas-name-overlay{position:absolute;inset:0;z-index:22;display:grid;place-items:center;padding:16px;background:#0d0f14bf;backdrop-filter:blur(5px)}
+.canvas-name-overlay[hidden]{display:none}
+.canvas-name-dialog{width:min(400px,100%);padding:20px;border:1px solid #ffffff24;border-radius:14px;background:#20232c;box-shadow:0 20px 70px #0009}
+.canvas-name-dialog[hidden]{display:none}
+.canvas-name-dialog h2{margin:0;font-size:18px}
+.canvas-name-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.auth-panel{max-width:480px;margin:auto}
+.auth-panel h1{margin-bottom:8px}
+.auth-panel label{display:block;margin:16px 0 6px;color:#c8ceda;font-size:13px}
+.auth-panel input{width:100%;padding:11px;border:1px solid #ffffff30;border-radius:9px;background:#252a36;color:#f5f6fa;font:inherit}
+.auth-message{min-height:1.4em;color:#c8ceda;font-size:13px}
+.cloud-setup-panel{max-width:560px;margin:32px auto}
+.share-overlay{position:absolute;inset:0;z-index:23;display:grid;place-items:center;padding:16px;background:#0d0f14bf;backdrop-filter:blur(5px)}
+.share-overlay[hidden]{display:none}
+.share-dialog{width:min(460px,100%);padding:20px;border:1px solid #ffffff24;border-radius:14px;background:#20232c;box-shadow:0 20px 70px #0009}
+.share-dialog h2{margin:0 0 8px;font-size:18px}
+.share-dialog p{color:#c8ceda;font-size:13px}
+.share-dialog input{width:100%;padding:10px;border:1px solid #ffffff30;border-radius:9px;background:#252a36;color:#f5f6fa;font:inherit}
+.canvas-library-hint{margin:0 0 10px;font-size:12px}
+.ruler{position:absolute;z-index:2;width:160vw;height:48px;pointer-events:none}
+.ruler[hidden]{display:none}
+.ruler-surface{position:relative;width:100%;height:100%;border:1px solid #323640;border-top:2px solid #526ee8;background:#ffffffc9;box-shadow:0 2px 9px #0003;pointer-events:auto;touch-action:none;cursor:grab}
+.ruler-surface:active{cursor:grabbing}
+.ruler-ticks{position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0,transparent 9px,#414653 10px,#414653 11px,transparent 12px,transparent 49px,#414653 50px,#414653 51px,transparent 52px,transparent 99px,#414653 100px,#414653 101px);opacity:.8}
+@media(max-width:700px){.tool-tray{--tool-size:clamp(32px,10.2vw,52px);--tool-gap:clamp(2px,.8vw,4px);bottom:18px;height:var(--tool-size)}.tool-tray.expanded{--tool-size:clamp(32px,10.2vw,52px);--tool-gap:clamp(2px,.8vw,4px);height:var(--tool-size);width:calc(50vw - 83px)}.tool-choice{height:var(--tool-size);padding:clamp(9px,2.7vw,13px)}.tool-settings{bottom:82px}.history-controls{right:8px;bottom:8px;gap:6px}.history-controls button{width:38px;height:38px;padding:9px}.help{left:8px;bottom:76px;max-width:64%;font-size:10px}.zoom{right:8px;bottom:56px}#status{top:50px;left:10px}.theme-toggle{top:10px;right:10px;padding:7px 9px;font-size:11px}.share-canvas-toggle{top:10px;right:106px;padding:7px 9px;font-size:11px}.canvas-menu-toggle{top:10px;left:10px;padding:7px 9px;font-size:11px}.saved-locations-toggle{top:82px;left:10px;padding:7px 9px;font-size:11px}.saved-locations-panel{top:120px;left:10px;width:min(320px,calc(100vw - 20px))}.canvas-library{padding:10px}.canvas-library-panel{padding:16px;max-height:96vh}.canvas-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}}
+  </style>
+</head>
+<body>
+  <main id="app">
+    <canvas id="canvas" aria-label="Drawing canvas"></canvas>
+    <div id="toolTray" class="tool-tray" role="group" aria-label="Drawing tools">
+      <button class="tool-choice is-current" data-tool="pen" type="button" title="Pen" aria-label="Pen" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.7 6.3 3 3M4 20c3.5 0 5.2-1.1 6.7-3l8.8-8.8a2.1 2.1 0 0 0-3-3l-8.8 8.8C5.8 15.5 4 17 4 20Z"/><path d="M4 20c1.7-.7 2.7-1.7 3.3-3.3"/></svg>
+        <span class="tool-color-indicator" aria-hidden="true"></span>
+      </button>
+      <button class="tool-choice" data-tool="marker" type="button" title="Marker" aria-label="Marker" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16 11-11 5 5L9 21H4zM13 7l5 5M4 16l5 5"/></svg>
+        <span class="tool-color-indicator" aria-hidden="true"></span>
+      </button>
+      <button class="tool-choice" data-tool="highlighter" type="button" title="Highlighter" aria-label="Highlighter" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 15 11-11 5 5L9 20H4zM4 15l5 5M3 22h18"/></svg>
+        <span class="tool-color-indicator" aria-hidden="true"></span>
+      </button>
+      <button class="tool-choice" data-tool="eraser" type="button" title="Eraser" aria-label="Eraser" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 14 9-10a2 2 0 0 1 3 0l6 6a2 2 0 0 1 0 3l-8 8H8l-5-5a2 2 0 0 1 0-2Z"/><path d="m8 21 8-9M7 10l7 7"/></svg>
+      </button>
+      <button class="tool-choice" data-tool="lasso" type="button" title="Lasso" aria-label="Lasso" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 9.5c0 4.1-3.8 7.5-8.5 7.5s-8.5-3.4-8.5-7.5S6.3 2 11 2s8.5 3.4 8.5 7.5Z"/><path d="M19 11c2 2 2 4 .5 5.5-1 1-2.5.5-2.5-.5s1.5-1.5 2.5-.5M17 16l2 2"/></svg>
+      </button>
+      <button class="tool-choice" data-tool="calligraphy" type="button" title="Calligraphy pen" aria-label="Calligraphy pen" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 2-6L17 3l4 4L10 18l-6 2Z"/><path d="m14 6 4 4"/></svg>
+        <span class="tool-color-indicator" aria-hidden="true"></span>
+      </button>
+      <button class="tool-choice" data-tool="pencil" type="button" title="Flat pencil" aria-label="Flat pencil" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 12-12 5 5L8 22H3zM12 8l5 5M3 17l5 5"/></svg>
+        <span class="tool-color-indicator" aria-hidden="true"></span>
+      </button>
+      <button class="tool-choice" data-tool="shader" type="button" title="Shader" aria-label="Shader smudge" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17c3-8 5-10 8-10s5 2 8-1M4 21c4-5 6-7 9-7s5 1 7-2"/><path d="M4 4h.01M20 20h.01"/></svg>
+        <span class="tool-color-indicator" aria-hidden="true"></span>
+      </button>
+      <button class="tool-choice" data-tool="ruler" type="button" title="Ruler" aria-label="Ruler" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7 17 3l4 14-14 4zM7 8l2 2m1-4 2 2m1-4 2 2m-5 5 2 2m1-4 2 2"/></svg>
+      </button>
+    </div>
+    <section id="toolSettings" class="tool-settings" aria-label="Tool settings" hidden>
+      <h2 id="toolSettingsTitle">Pen settings</h2>
+      <label id="colorSetting" class="setting-row" for="toolColor"><span>Color</span><input id="toolColor" type="color" value="#202124"></label>
+      <label class="setting-row size-setting" for="toolSize"><span>Size</span><input id="toolSize" type="range" min="1" max="48" value="5"><output id="toolSizeValue">5</output></label>
+      <div id="brushSizeControl" class="brush-size-control" role="slider" tabindex="0" aria-label="Brush size" aria-valuemin="1" aria-valuemax="48" aria-valuenow="5" title="Drag the circle edge up or down to change brush size">
+        <span id="brushSizeCircle" class="brush-size-circle" aria-hidden="true"></span>
+      </div>
+      <div id="rotationSetting" class="setting-row rotation-setting" hidden>
+        <label for="toolRotation">Nib angle</label><input id="toolRotation" type="range" min="0" max="359" value="0"><span id="rotationPreview" class="rotation-preview" aria-hidden="true"></span><output id="toolRotationValue">0°</output>
+        <button id="resetRotation" type="button" title="Reset nib angle">Reset</button>
+      </div>
+      <label id="fillSetting" class="fill-setting" for="toolFill"><input id="toolFill" type="checkbox"><span>Fill area</span></label>
+      <label id="transparencySetting" class="setting-row transparency-setting" for="toolTransparency" hidden>
+        <span class="sr-only">Highlighter transparency</span>
+        <span class="transparency-slider"><canvas id="transparencyPreview" aria-hidden="true"></canvas><input id="toolTransparency" type="range" min="0" max="75" value="50" aria-label="Highlighter transparency"></span>
+      </label>
+    </section>
+    <div class="history-controls" role="group" aria-label="History">
+      <button id="undo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h9a7 7 0 0 1 0 14h-2"/></svg>
+      </button>
+      <button id="redo" type="button" title="Redo (Ctrl+Y)" aria-label="Redo">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9h-9a7 7 0 0 0 0 14h2"/></svg>
+      </button>
+    </div>
+    <div id="ruler" class="ruler" aria-label="Ruler" hidden>
+      <div id="rulerSurface" class="ruler-surface" title="Drag to move · right-click-drag or use two fingers to rotate">
+        <div class="ruler-ticks" aria-hidden="true"></div>
+      </div>
+    </div>
+    <div class="help">Drag to draw · Space + drag to move · Two fingers to pan/zoom/rotate ruler · Wheel to zoom · Autosaves to your account</div>
+    <div id="status" role="status">Starting…</div>
+    <button id="savedLocationsToggle" class="saved-locations-toggle" type="button" aria-expanded="false" aria-controls="savedLocationsPanel">Saved locations</button>
+    <section id="savedLocationsPanel" class="saved-locations-panel" aria-label="Saved locations" hidden>
+      <h2>Saved locations</h2>
+      <div id="savedLocationsList" class="saved-locations-list"></div>
+      <label class="location-name-label" for="locationName">Name this view</label>
+      <div class="location-save-row">
+        <input id="locationName" type="text" maxlength="60" placeholder="Location name">
+        <button id="saveLocation" type="button">Save view</button>
+      </div>
+    </section>
+    <button id="themeToggle" class="theme-toggle" type="button" aria-label="Dark mode" aria-pressed="false" title="Dark mode">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 15.5A8.5 8.5 0 0 1 8.5 3.8 8.5 8.5 0 1 0 20.2 15.5Z"/></svg>
+      <span id="themeToggleLabel">Dark mode</span>
+    </button>
+    <button id="shareCanvas" class="share-canvas-toggle" type="button" disabled>Share</button>
+    <div class="zoom" id="zoomLabel">100%</div>
+    <button id="canvasMenuToggle" class="canvas-menu-toggle" type="button" aria-expanded="false" aria-controls="canvasLibrary">Canvases</button>
+    <section id="canvasLibrary" class="canvas-library" aria-label="Canvas library" hidden>
+      <div class="canvas-library-panel">
+        <div id="authPanel" class="auth-panel" hidden>
+          <div id="authEntry">
+            <h1>Sign in to sync canvases</h1>
+            <p>Cloud canvases are private to your account. Room links do not grant access.</p>
+            <form id="authForm">
+              <label for="authEmail">Email</label>
+              <input id="authEmail" type="email" autocomplete="email" required>
+              <label for="authPassword">Password</label>
+              <input id="authPassword" type="password" autocomplete="current-password" minlength="6" required>
+              <p id="authMessage" class="auth-message" role="status"></p>
+              <div class="library-actions">
+                <button id="authSubmit" class="library-button primary" type="submit">Continue</button>
+              </div>
+            </form>
+          </div>
+          <div id="authConfirmation" hidden>
+            <h1>Account created</h1>
+            <p>Check your email to confirm it, then continue with the same email and password.</p>
+          </div>
+        </div>
+        <div id="cloudSetupPanel" class="cloud-setup-panel" hidden>
+          <h1>Cloud storage setup needed</h1>
+          <p id="cloudSetupMessage">The account is signed in, but the private canvas table is unavailable.</p>
+          <p>Follow the Supabase SQL setup in README.md, then retry. Your existing local canvases are still in this browser.</p>
+          <div class="library-actions">
+            <button id="retryCloudSetup" class="library-button primary" type="button">Retry cloud setup</button>
+            <button id="signOut" class="library-button" type="button">Sign out</button>
+          </div>
+        </div>
+        <div id="nameSetup" class="name-setup" hidden>
+          <h1>Welcome</h1>
+          <p>What should I call you?</p>
+          <form id="displayNameForm">
+            <label for="displayNameInput">Your name</label>
+            <input id="displayNameInput" type="text" maxlength="60" autocomplete="name" required>
+            <div class="library-actions"><button class="library-button primary" type="submit">Continue</button></div>
+          </form>
+        </div>
+        <div id="libraryContent" hidden>
+          <div class="library-header"><h1 id="libraryGreeting">Your canvases</h1><div class="library-actions"><button id="signOutFromLibrary" class="library-button" type="button">Sign out</button><button id="closeCanvasLibrary" class="library-button" type="button">Back to canvas</button></div></div>
+          <div class="library-actions">
+            <button id="createCanvas" class="library-button primary" type="button">Create canvas</button>
+            <button id="renameCanvas" class="library-button" type="button" disabled>Rename</button>
+            <button id="deleteCanvases" class="library-button" type="button" disabled>Delete selected</button>
+          </div>
+          <p class="canvas-library-hint">Click a canvas to open it. Press and hold a canvas to select it; then click others to select more.</p>
+          <div id="canvasGrid" class="canvas-grid"></div>
+        </div>
+      </div>
+    </section>
+    <div id="canvasNameDialog" class="canvas-name-overlay" hidden>
+      <section class="canvas-name-dialog" role="dialog" aria-modal="true" aria-labelledby="canvasNameDialogTitle">
+        <h2 id="canvasNameDialogTitle">Name this canvas</h2>
+        <form id="canvasNameForm">
+          <label for="canvasNameInput">Canvas name</label>
+          <input id="canvasNameInput" type="text" maxlength="60" required>
+          <div class="canvas-name-dialog-actions">
+            <button id="cancelCanvasName" class="library-button" type="button">Cancel</button>
+            <button id="saveCanvasName" class="library-button primary" type="submit">Save</button>
+          </div>
+        </form>
+      </section>
+    </div>
+    <div id="shareOverlay" class="share-overlay" hidden>
+      <section class="share-dialog" role="dialog" aria-modal="true" aria-labelledby="shareDialogTitle">
+        <h2 id="shareDialogTitle">Canvas room link</h2>
+        <p>Room access is not enabled yet. This link contains an automatic room code, but it will not let other people view or edit the canvas until multiplayer access is implemented.</p>
+        <label for="shareLinkInput">Room link</label>
+        <input id="shareLinkInput" type="text" readonly>
+        <div class="canvas-name-dialog-actions">
+          <button id="closeShareDialog" class="library-button" type="button">Close</button>
+          <button id="copyShareLink" class="library-button primary" type="button">Copy link</button>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+(() => {
+'use strict';
+
+const canvasEl = document.getElementById('canvas');
+const ctx = canvasEl.getContext('2d', { alpha: false, willReadFrequently: true });
+const statusEl = document.getElementById('status');
+const zoomLabel = document.getElementById('zoomLabel');
+const toolTray = document.getElementById('toolTray');
+const toolSettings = document.getElementById('toolSettings');
+const toolButtons = [...document.querySelectorAll('.tool-choice')];
+const toolSettingsTitle = document.getElementById('toolSettingsTitle');
+const colorSetting = document.getElementById('colorSetting');
+const fillSetting = document.getElementById('fillSetting');
+const transparencySetting = document.getElementById('transparencySetting');
+const toolColorInput = document.getElementById('toolColor');
+const toolSizeInput = document.getElementById('toolSize');
+const toolSizeValue = document.getElementById('toolSizeValue');
+const brushSizeControl = document.getElementById('brushSizeControl');
+const brushSizeCircle = document.getElementById('brushSizeCircle');
+const toolFillInput = document.getElementById('toolFill');
+const toolTransparencyInput = document.getElementById('toolTransparency');
+const transparencyPreview = document.getElementById('transparencyPreview');
+const transparencyPreviewContext = transparencyPreview.getContext('2d');
+const rotationSetting = document.getElementById('rotationSetting');
+const toolRotationInput = document.getElementById('toolRotation');
+const toolRotationValue = document.getElementById('toolRotationValue');
+const rotationPreview = document.getElementById('rotationPreview');
+const resetRotationButton = document.getElementById('resetRotation');
+const savedLocationsToggle = document.getElementById('savedLocationsToggle');
+const savedLocationsPanel = document.getElementById('savedLocationsPanel');
+const savedLocationsList = document.getElementById('savedLocationsList');
+const locationNameInput = document.getElementById('locationName');
+const saveLocationButton = document.getElementById('saveLocation');
+const themeToggle = document.getElementById('themeToggle');
+const themeToggleLabel = document.getElementById('themeToggleLabel');
+const rulerEl = document.getElementById('ruler');
+const rulerSurface = document.getElementById('rulerSurface');
+const canvasMenuToggle = document.getElementById('canvasMenuToggle');
+const canvasLibrary = document.getElementById('canvasLibrary');
+const nameSetup = document.getElementById('nameSetup');
+const displayNameForm = document.getElementById('displayNameForm');
+const displayNameInput = document.getElementById('displayNameInput');
+const libraryContent = document.getElementById('libraryContent');
+const libraryGreeting = document.getElementById('libraryGreeting');
+const canvasGrid = document.getElementById('canvasGrid');
+const closeCanvasLibrary = document.getElementById('closeCanvasLibrary');
+const createCanvasButton = document.getElementById('createCanvas');
+const renameCanvasButton = document.getElementById('renameCanvas');
+const deleteCanvasesButton = document.getElementById('deleteCanvases');
+const canvasNameDialog = document.getElementById('canvasNameDialog');
+const canvasNameDialogTitle = document.getElementById('canvasNameDialogTitle');
+const canvasNameForm = document.getElementById('canvasNameForm');
+const canvasNameInput = document.getElementById('canvasNameInput');
+const cancelCanvasNameButton = document.getElementById('cancelCanvasName');
+const saveCanvasNameButton = document.getElementById('saveCanvasName');
+const authPanel = document.getElementById('authPanel');
+const authEntry = document.getElementById('authEntry');
+const authConfirmation = document.getElementById('authConfirmation');
+const authForm = document.getElementById('authForm');
+const authEmailInput = document.getElementById('authEmail');
+const authPasswordInput = document.getElementById('authPassword');
+const authMessage = document.getElementById('authMessage');
+const authSubmitButton = document.getElementById('authSubmit');
+const cloudSetupPanel = document.getElementById('cloudSetupPanel');
+const cloudSetupMessage = document.getElementById('cloudSetupMessage');
+const retryCloudSetupButton = document.getElementById('retryCloudSetup');
+const signOutButton = document.getElementById('signOut');
+const signOutFromLibraryButton = document.getElementById('signOutFromLibrary');
+const shareCanvasButton = document.getElementById('shareCanvas');
+const shareOverlay = document.getElementById('shareOverlay');
+const shareLinkInput = document.getElementById('shareLinkInput');
+const copyShareLinkButton = document.getElementById('copyShareLink');
+const closeShareDialogButton = document.getElementById('closeShareDialog');
+const SUPABASE_URL = 'https://rsldrwnfgfworjpztcbt.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_1qcvF3fu2laGbwjeUF1obg_4dnSbE3V';
+const CLOUD_TABLE = 'canvases';
+const TOOL_ORDER = ['pen','marker','highlighter','eraser','lasso','calligraphy','pencil','shader','ruler'];
+const DRAWING_TOOLS = ['pen','marker','highlighter','eraser','calligraphy','pencil','shader'];
+const ROTATABLE_TOOLS = ['highlighter','calligraphy','pencil'];
+const MIN_ZOOM = 1e-9;
+const MAX_ZOOM = 1e9;
+const DEFAULT_ZOOM = 0.5;
+const CHUNK_SIZE = 1024;
+const MAX_INDEXED_CHUNKS_PER_STROKE = 256;
+const DB_NAME = 'InfiniteCanvasDB';
+const DB_VERSION = 1;
+const STORE = 'documents';
+const LIBRARY_KEY = 'library';
+let activeDocumentKey = null;
+
+let db = null;
+let cloudClient = null;
+let authSession = null;
+let cloudReady = false;
+let cloudSyncError = '';
+let libraryData = {displayName:'',canvases:[]};
+let selectedCanvasIds = new Set();
+let canvasHoldTimer = null;
+let canvasNameDialogMode = 'create';
+let canvasNameDialogTarget = null;
+let strokes = new Map();           // strokeId -> stroke data
+let chunks = new Map();            // "cx,cy" -> Set(strokeId)
+let largeStrokes = new Set();
+let strokeOrder = new Map();
+let strokeOrderDirty = true;
+let undoStack = [];
+let redoStack = [];
+let camera = { x: 0, y: 0, zoom: 1 };
+let tool = 'pen';
+let settings = {
+  pen: { color:'#202124', size:5, fill:false },
+  marker: { color:'#202124', size:12, fill:false },
+  highlighter: { color:'#ffe85c', size:24, fill:false, transparency:50, rotation:0 },
+  eraser: { size:16 },
+  calligraphy: { color:'#202124', size:8, fill:false, rotation:0 },
+  pencil: { color:'#202124', size:7, fill:false, rotation:0 },
+  shader: { size:28 }
+};
+let worldFill = null;
+let trayExpanded = false;
+let darkMode = false;
+let savedLocations = [];
+let cursorPosition = null;
+let activeStroke = null;
+let activeLasso = null;
+let selection = null;
+let selectionTransform = null;
+let rulerGeometry = {x:window.innerWidth/2,y:window.innerHeight/2,angle:0};
+let pointerMode = null;
+let lastPointer = null;
+let spaceDown = false;
+let pointers = new Map();
+let pinchStart = null;
+let pendingStrokeStart=null;
+let screenStrokeBoundsZoom=1;
+let rulerDrag=null;
+let rulerPointers=new Map();
+let toolRotationDrag=null;
+let rotationPreviewPosition=null;
+let brushSizeDrag=null;
+let dirty = false;
+let saveTimer = null;
+let savePromise = null;
+let changeGeneration = 0;
+let renderQueued = false;
+let dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+
+function setStatus(s) { statusEl.textContent = s; }
+function supportsRotation(name=tool) { return ROTATABLE_TOOLS.includes(name); }
+function normalizeAngle(degrees) { return ((degrees%360)+360)%360; }
+function displayColor(color) {
+  if(!darkMode||typeof color!=='string'||!/^#[0-9a-f]{6}$/i.test(color))return color;
+  const red=parseInt(color.slice(1,3),16),green=parseInt(color.slice(3,5),16),blue=parseInt(color.slice(5,7),16);
+  if(Math.max(red,green,blue)-Math.min(red,green,blue)>24)return color;
+  if(Math.max(red,green,blue)<64)return '#f7f8fa';
+  if(Math.min(red,green,blue)>220)return '#202124';
+  return color;
+}
+function updateThemeUI() {
+  themeToggle.setAttribute('aria-pressed',String(darkMode));
+  themeToggle.setAttribute('aria-label',darkMode?'Light mode':'Dark mode');
+  themeToggle.title=darkMode?'Switch to light mode':'Switch to dark mode';
+  themeToggleLabel.textContent=darkMode?'Light mode':'Dark mode';
+}
+function currentSettings() { return settings[tool]; }
+function strokeWidthFor(name=tool) {
+  const size=settings[name].size;
+  return name==='eraser'?Math.max(18,size*3):size;
+}
+function opacityFor(name=tool) {
+  if(name==='highlighter')return 1-settings.highlighter.transparency/100;
+  if(name==='marker')return .65;
+  if(name==='pencil')return .72;
+  return 1;
+}
+function chunkKey(cx, cy) { return `${cx},${cy}`; }
+function pointChunk(x, y) { return [Math.floor(x / CHUNK_SIZE), Math.floor(y / CHUNK_SIZE)]; }
+function boundsFor(points, width=0) {
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for (const p of points) { minX=Math.min(minX,p.x); minY=Math.min(minY,p.y); maxX=Math.max(maxX,p.x); maxY=Math.max(maxY,p.y); }
+  const pad = width / 2 + 2;
+  return {minX:minX-pad,minY:minY-pad,maxX:maxX+pad,maxY:maxY+pad};
+}
+function centerlineBounds(points){
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for(const point of points){minX=Math.min(minX,point.x);minY=Math.min(minY,point.y);maxX=Math.max(maxX,point.x);maxY=Math.max(maxY,point.y);}
+  return{minX,minY,maxX,maxY};
+}
+function keysForBounds(b) {
+  const minCX=Math.floor(b.minX/CHUNK_SIZE),maxCX=Math.floor(b.maxX/CHUNK_SIZE);
+  const minCY=Math.floor(b.minY/CHUNK_SIZE),maxCY=Math.floor(b.maxY/CHUNK_SIZE);
+  if((maxCX-minCX+1)*(maxCY-minCY+1)>MAX_INDEXED_CHUNKS_PER_STROKE)return [];
+  const keys=[];
+  for(let y=minCY;y<=maxCY;y++) for(let x=minCX;x<=maxCX;x++) keys.push(chunkKey(x,y));
+  return keys;
+}
+function screenStrokeWorldBounds(stroke){
+  const bounds=centerlineBounds(stroke.points);
+  const padding=(stroke.width/2+2)/camera.zoom;
+  return{minX:bounds.minX-padding,minY:bounds.minY-padding,maxX:bounds.maxX+padding,maxY:bounds.maxY+padding};
+}
+function ensureScreenStrokeBounds(){
+  if(screenStrokeBoundsZoom===camera.zoom)return;
+  for(const stroke of strokes.values()){
+    if(stroke.screenSize)stroke.bounds=screenStrokeWorldBounds(stroke);
+  }
+  if(activeStroke?.screenSize)activeStroke.bounds=screenStrokeWorldBounds(activeStroke);
+  screenStrokeBoundsZoom=camera.zoom;
+}
+function indexStroke(stroke) {
+  if(stroke.screenSize)stroke.indexBounds=centerlineBounds(stroke.points);
+  stroke.chunkKeys = keysForBounds(stroke.indexBounds||stroke.bounds);
+  if(!stroke.chunkKeys.length){largeStrokes.add(stroke.id);return;}
+  largeStrokes.delete(stroke.id);
+  for (const key of stroke.chunkKeys) {
+    if (!chunks.has(key)) chunks.set(key,new Set());
+    chunks.get(key).add(stroke.id);
+  }
+}
+function unindexStroke(stroke) {
+  largeStrokes.delete(stroke.id);
+  for (const key of stroke.chunkKeys || []) {
+    const set=chunks.get(key);
+    if(set){set.delete(stroke.id);if(!set.size)chunks.delete(key);}
+  }
+}
+function ensureStrokeOrder() {
+  if(!strokeOrderDirty)return;
+  strokeOrder=new Map();
+  let order=0;
+  for(const id of strokes.keys())strokeOrder.set(id,order++);
+  strokeOrderDirty=false;
+}
+function addStroke(stroke, recordUndo=true) {
+  strokes.set(stroke.id,stroke);strokeOrderDirty=true;indexStroke(stroke);
+  if(recordUndo){
+    undoStack.push({type:'add',stroke,worldFillBefore:stroke.worldFillBefore,worldFillAfter:stroke.worldFillAfter});
+    redoStack=[];
+  }
+  markDirty(); requestRender();updateButtons();
+}
+function removeStroke(id, recordUndo=true) {
+  const stroke=strokes.get(id); if(!stroke)return;
+  unindexStroke(stroke); strokes.delete(id);strokeOrderDirty=true;
+  if(selection)selection.ids=selection.ids.filter(selectedId=>selectedId!==id);
+  if(recordUndo){undoStack.push({type:'remove',stroke});redoStack=[];}
+  markDirty(); requestRender();updateButtons();
+}
+function markDirty() {
+  dirty=true;changeGeneration++;setStatus('Unsaved changes…');
+  clearTimeout(saveTimer); saveTimer=setTimeout(saveToDB,450);
+}
+function openDB() {
+  return new Promise((resolve,reject)=>{
+    if(!('indexedDB' in window)){reject(new Error('This browser does not support local database storage.'));return;}
+    const req=indexedDB.open(DB_NAME,DB_VERSION);
+    req.onupgradeneeded=()=>{const d=req.result;if(!d.objectStoreNames.contains(STORE))d.createObjectStore(STORE);};
+    req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
+  });
+}
+function saveToDB() {
+  if(savePromise)return savePromise;
+  if(!db || !dirty || !activeDocumentKey)return Promise.resolve(true);
+  clearTimeout(saveTimer);saveTimer=null;
+  const savedGeneration=changeGeneration;
+  const payload={version:1,chunkSize:CHUNK_SIZE,strokes:Array.from(strokes.values()),camera,settings,worldFill,darkMode,savedLocations,updatedAt:Date.now()};
+  const saveOperation=new Promise(resolve=>{
+    try {
+      const tx=db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).put(payload,activeDocumentKey);
+      tx.oncomplete=async()=>{
+        if(authSession&&cloudReady){
+          const entry=libraryData.canvases.find(item=>item.key===activeDocumentKey);
+          if(!entry){dirty=true;setStatus('Cloud save failed · active canvas is missing from your library');resolve(false);return;}
+          try{
+            await upsertCloudCanvas(entry,payload);
+            if(changeGeneration===savedGeneration){dirty=false;setStatus('Saved to cloud');resolve(true);}
+            else{dirty=true;setStatus('New changes are waiting to sync');resolve(false);}
+          }catch(error){
+            dirty=true;setStatus(`Cloud save failed · ${error.message}`);
+            clearTimeout(saveTimer);
+            saveTimer=setTimeout(saveToDB,5000);
+            resolve(false);
+          }
+          return;
+        }
+        if(changeGeneration===savedGeneration){dirty=false;setStatus('Saved locally');resolve(true);}
+        else{dirty=true;setStatus('New changes are waiting to save');resolve(false);}
+      };
+      tx.onerror=()=>{setStatus('Local save failed · changes may not persist');resolve(false);};
+    } catch(error){setStatus(`Local save failed · ${error.message}`);resolve(false);}
+  });
+  savePromise=saveOperation.finally(()=>{
+    savePromise=null;
+    if(dirty&&!saveTimer)saveTimer=setTimeout(saveToDB,450);
+  });
+  return savePromise;
+}
+function readStoredValue(key){
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(STORE,'readonly'),request=tx.objectStore(STORE).get(key);
+    request.onsuccess=()=>resolve(request.result||null);request.onerror=()=>reject(request.error);
+  });
+}
+function writeLibrary(){
+  return new Promise((resolve,reject)=>{
+    try{
+      const tx=db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).put(libraryData,LIBRARY_KEY);
+      tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);
+    }catch(error){reject(error);}
+  });
+}
+function makeDocumentKey(id){return`canvas:${id}`;}
+function makeCanvasId(){
+  return globalThis.crypto?.randomUUID?.()||`canvas-${Date.now()}-${Math.random().toString(36).slice(2,10)}`;
+}
+function emptyDocument(){
+  return{version:1,chunkSize:CHUNK_SIZE,strokes:[],camera:{x:0,y:0,zoom:DEFAULT_ZOOM},settings:{},worldFill:null,darkMode:false,savedLocations:[]};
+}
+async function upsertCloudCanvas(entry,payload){
+  const {data:{session}}=await cloudClient.auth.getSession();
+  if(!session)throw new Error('Sign in again to continue syncing.');
+  authSession=session;
+  const {error}=await cloudClient.from(CLOUD_TABLE).upsert({
+    id:entry.id,
+    owner_id:session.user.id,
+    name:entry.name,
+    payload,
+    share_code:entry.shareCode||null,
+    updated_at:new Date(payload.updatedAt||Date.now()).toISOString()
+  },{onConflict:'owner_id,id'});
+  if(error)throw error;
+}
+async function loadLibrary(){
+  const saved=await readStoredValue(LIBRARY_KEY);
+  if(saved&&Array.isArray(saved.canvases)){
+    libraryData={displayName:typeof saved.displayName==='string'?saved.displayName.slice(0,60):'',canvases:saved.canvases.filter(item=>item&&typeof item.id==='string'&&typeof item.key==='string'&&typeof item.name==='string').map(item=>({id:item.id,key:item.key,name:item.name.slice(0,60),updatedAt:Number(item.updatedAt)||0,shareCode:typeof item.shareCode==='string'?item.shareCode:''}))};
+    return;
+  }
+  const existing=await readStoredValue('main');
+  libraryData={displayName:'',canvases:existing?[{id:'legacy-main',key:'main',name:'My Canvas',updatedAt:Number(existing.updatedAt)||Date.now()}]:[]};
+  await writeLibrary();
+}
+async function syncCloudLibrary(){
+  const {data:{session}}=await cloudClient.auth.getSession();
+  if(!session)throw new Error('Sign in again to continue.');
+  authSession=session;
+  const previousOwner=await readStoredValue('cloud-owner');
+  if(previousOwner&&previousOwner!==session.user.id){
+    libraryData={displayName:typeof session.user.user_metadata?.display_name==='string'?session.user.user_metadata.display_name.slice(0,60):'',canvases:[]};
+  }
+  const {data:remoteRows,error}=await cloudClient.from(CLOUD_TABLE).select('id,name,payload,share_code,updated_at').order('updated_at',{ascending:false});
+  if(error)throw error;
+  const remoteById=new Map(remoteRows.map(row=>[row.id,row]));
+  const syncedIds=new Set();
+  for(const entry of libraryData.canvases){
+    const localPayload=await readStoredValue(entry.key);
+    if(!localPayload)continue;
+    const remote=remoteById.get(entry.id);
+    if(remote){
+      const localTime=Number(localPayload.updatedAt)||entry.updatedAt||0;
+      const remoteTime=Number(remote.payload?.updatedAt)||Date.parse(remote.updated_at)||0;
+      if(remoteTime>localTime){
+        const tx=db.transaction(STORE,'readwrite');
+        tx.objectStore(STORE).put(remote.payload,entry.key);
+        await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
+        entry.name=remote.name;
+        entry.updatedAt=remoteTime;
+      }else{
+        entry.shareCode=entry.shareCode||remote.share_code||'';
+        await upsertCloudCanvas(entry,localPayload);
+      }
+      if(remote.share_code)entry.shareCode=remote.share_code;
+      syncedIds.add(entry.id);
+      continue;
+    }
+    await upsertCloudCanvas(entry,localPayload);
+    syncedIds.add(entry.id);
+  }
+  for(const row of remoteRows){
+    if(syncedIds.has(row.id))continue;
+    const key=makeDocumentKey(row.id);
+    const tx=db.transaction(STORE,'readwrite');
+    tx.objectStore(STORE).put(row.payload,key);
+    await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
+    libraryData.canvases.push({id:row.id,key,name:row.name,updatedAt:Number(row.payload?.updatedAt)||Date.parse(row.updated_at)||Date.now(),shareCode:row.share_code||''});
+  }
+  const profileName=session.user.user_metadata?.display_name;
+  if(!libraryData.displayName&&typeof profileName==='string')libraryData.displayName=profileName.slice(0,60);
+  await writeLibrary();
+  const ownerTx=db.transaction(STORE,'readwrite');
+  ownerTx.objectStore(STORE).put(session.user.id,'cloud-owner');
+  await new Promise((resolve,reject)=>{ownerTx.oncomplete=resolve;ownerTx.onerror=()=>reject(ownerTx.error);});
+  cloudReady=true;
+  cloudSyncError='';
+  libraryGreeting.textContent=`Hi, ${libraryData.displayName||session.user.email||'there'}`;
+}
+async function startCloudSession(session){
+  authSession=session;
+  cloudReady=false;
+  cloudSyncError='';
+  showCanvasLibrary();
+  setStatus('Syncing your private canvases…');
+  try{
+    await syncCloudLibrary();
+    showCanvasLibrary();
+    closeCanvasLibrary.disabled=!activeDocumentKey;
+    setStatus('Cloud sync ready');
+    if(new URLSearchParams(location.search).has('room')){
+      setStatus('Room links are not active yet; the room code does not grant canvas access.');
+    }
+  }catch(error){
+    cloudSyncError=`Cloud sync failed: ${error.message}`;
+    cloudReady=false;
+    showCanvasLibrary();
+    setStatus(cloudSyncError);
+  }
+}
+async function submitAuthForm(event){
+  event.preventDefault();
+  authSubmitButton.disabled=true;
+  authMessage.textContent='Signing in…';
+  try{
+    const credentials={email:authEmailInput.value.trim(),password:authPasswordInput.value};
+    let {data,error}=await cloudClient.auth.signInWithPassword(credentials);
+    if(error){
+      const invalidCredentials=error.code==='invalid_credentials'||/invalid login credentials/i.test(error.message||'');
+      if(!invalidCredentials)throw error;
+      authMessage.textContent='No matching sign-in. Creating an account…';
+      ({data,error}=await cloudClient.auth.signUp(credentials));
+      if(error)throw error;
+      if(!data.session&&data.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0){
+        throw new Error('This email already has an account, but the password did not match.');
+      }
+    }
+    if(data.session){
+      authMessage.textContent='Signed in. Syncing your canvases…';
+      await startCloudSession(data.session);
+    }else{
+      authEntry.hidden=true;
+      authConfirmation.hidden=false;
+    }
+  }catch(error){
+    authMessage.textContent=`Could not sign in or create an account: ${error.message}`;
+  }finally{
+    authSubmitButton.disabled=false;
+  }
+}
+async function retryCloudSetup(){
+  try{
+    const {data:{session},error}=await cloudClient.auth.getSession();
+    if(error)throw error;
+    if(!session){authSession=null;showCanvasLibrary();return;}
+    await startCloudSession(session);
+  }catch(error){
+    cloudSyncError=`Could not check your sign-in: ${error.message}`;
+    showCanvasLibrary();
+    setStatus(cloudSyncError);
+  }
+}
+async function signOut(){
+  if(!await saveToDB())return;
+  try{
+    const {error}=await cloudClient.auth.signOut();
+    if(error)throw error;
+    authSession=null;
+    cloudReady=false;
+    activeDocumentKey=null;
+    dirty=false;
+    shareCanvasButton.disabled=true;
+    restorePayload(null);
+    setStatus('Signed out');
+    showCanvasLibrary();
+  }catch(error){setStatus(`Could not sign out: ${error.message}`);}
+}
+function showCanvasLibrary(){
+  canvasLibrary.hidden=false;
+  canvasMenuToggle.setAttribute('aria-expanded','true');
+  selectedCanvasIds.clear();
+  renderCanvasLibrary();
+}
+function renderCanvasLibrary(){
+  authPanel.hidden=Boolean(authSession);
+  cloudSetupPanel.hidden=!authSession||cloudReady;
+  if(!authSession){
+    nameSetup.hidden=true;
+    libraryContent.hidden=true;
+    return;
+  }
+  if(!cloudReady){
+    nameSetup.hidden=true;
+    libraryContent.hidden=true;
+    cloudSetupMessage.textContent=cloudSyncError||'The account is signed in, but the private canvas table is unavailable.';
+    return;
+  }
+  const needsName=!libraryData.displayName;
+  nameSetup.hidden=!needsName;
+  libraryContent.hidden=needsName;
+  canvasNameDialog.hidden=true;
+  if(needsName){displayNameInput.focus();return;}
+  libraryGreeting.textContent=`Hi, ${libraryData.displayName}`;
+  canvasGrid.replaceChildren();
+  for(const entry of libraryData.canvases){
+    const card=document.createElement('button');
+    card.type='button';card.className='canvas-card';card.dataset.canvasId=entry.id;
+    card.setAttribute('aria-label',`${entry.name}${selectedCanvasIds.has(entry.id)?', selected':''}`);
+    const preview=document.createElement('canvas');preview.className='canvas-card-preview';preview.width=240;preview.height=240;preview.setAttribute('aria-hidden','true');
+    const title=document.createElement('span');title.className='canvas-card-name';title.textContent=entry.name;
+    card.append(preview,title);
+    drawCanvasPreview(preview,null);
+    readStoredValue(entry.key).then(payload=>{
+      if(payload&&card.isConnected)drawCanvasPreview(preview,payload);
+    }).catch(()=>setStatus('Could not load a canvas preview'));
+    card.classList.toggle('selected',selectedCanvasIds.has(entry.id));
+    let longPressed=false;
+    let pointerDownAt=0;
+    const selectCard=()=>{
+      if(longPressed)return;
+      longPressed=true;
+      if(selectedCanvasIds.has(entry.id))selectedCanvasIds.delete(entry.id);
+      else selectedCanvasIds.add(entry.id);
+      refreshCanvasSelection();
+    };
+    card.addEventListener('pointerdown',()=>{
+      longPressed=false;
+      pointerDownAt=performance.now();
+      clearTimeout(canvasHoldTimer);
+      canvasHoldTimer=setTimeout(selectCard,520);
+    });
+    card.addEventListener('pointerup',event=>{
+      clearTimeout(canvasHoldTimer);
+      if(pointerDownAt&&event.timeStamp-pointerDownAt>=520)selectCard();
+      pointerDownAt=0;
+    });
+    for(const eventName of ['pointercancel','pointerleave']){
+      card.addEventListener(eventName,()=>{clearTimeout(canvasHoldTimer);pointerDownAt=0;});
+    }
+    card.addEventListener('click',()=>{
+      if(longPressed){longPressed=false;return;}
+      if(selectedCanvasIds.size){
+        if(selectedCanvasIds.has(entry.id))selectedCanvasIds.delete(entry.id);
+        else selectedCanvasIds.add(entry.id);
+        refreshCanvasSelection();
+        return;
+      }
+      activateCanvas(entry.id);
+    });
+    card.addEventListener('contextmenu',event=>event.preventDefault());
+    canvasGrid.append(card);
+  }
+  if(!libraryData.canvases.length){
+    const createCard=document.createElement('button');
+    createCard.type='button';createCard.className='create-canvas-card';createCard.setAttribute('aria-label','Create a canvas');
+    const preview=document.createElement('span');preview.className='create-canvas-preview';preview.setAttribute('aria-hidden','true');preview.textContent='+';
+    const label=document.createElement('span');label.className='create-canvas-label';label.textContent='Create canvas';
+    createCard.append(preview,label);
+    createCard.onclick=createCanvasAndOpen;
+    canvasGrid.append(createCard);
+  }
+  refreshCanvasSelection();
+}
+function drawCanvasPreview(canvas,payload){
+  const preview=canvas.getContext('2d');
+  const size=canvas.width;
+  preview.clearRect(0,0,size,size);
+  preview.fillStyle='#f7f8fa';preview.fillRect(0,0,size,size);
+  const list=payload&&Array.isArray(payload.strokes)?payload.strokes:[];
+  const points=list.flatMap(stroke=>Array.isArray(stroke.points)?stroke.points:[]);
+  if(!points.length){
+    preview.fillStyle='#8a8f99';preview.font='14px system-ui';preview.textAlign='center';preview.fillText('Empty canvas',size/2,size/2);
+    return;
+  }
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  for(const point of points){
+    minX=Math.min(minX,point.x);maxX=Math.max(maxX,point.x);
+    minY=Math.min(minY,point.y);maxY=Math.max(maxY,point.y);
+  }
+  const spanX=Math.max(1,maxX-minX),spanY=Math.max(1,maxY-minY);
+  const scale=Math.min((size-32)/spanX,(size-32)/spanY);
+  const centerX=(minX+maxX)/2,centerY=(minY+maxY)/2;
+  preview.save();preview.translate(size/2-centerX*scale,size/2-centerY*scale);preview.scale(scale,scale);
+  for(const stroke of list){
+    if(!Array.isArray(stroke.points)||!stroke.points.length)continue;
+    const path=stroke.points;
+    preview.globalAlpha=Number.isFinite(stroke.opacity)?stroke.opacity:1;
+    preview.strokeStyle=stroke.color||'#202124';preview.fillStyle=stroke.color||'#202124';
+    preview.lineWidth=Math.max(.5,(stroke.width||2)/(stroke.screenSize?scale:1));
+    preview.lineCap='round';preview.lineJoin='round';
+    preview.beginPath();preview.moveTo(path[0].x,path[0].y);
+    for(let i=1;i<path.length;i++)preview.lineTo(path[i].x,path[i].y);
+    if(stroke.fillRegion){preview.closePath();preview.fill();}
+    if(path.length===1){preview.beginPath();preview.arc(path[0].x,path[0].y,Math.max(.5,preview.lineWidth/2),0,Math.PI*2);preview.fill();}
+    else preview.stroke();
+  }
+  preview.restore();
+}
+function refreshCanvasSelection(){
+  for(const card of canvasGrid.querySelectorAll('.canvas-card')){
+    card.classList.toggle('selected',selectedCanvasIds.has(card.dataset.canvasId));
+    card.setAttribute('aria-pressed',String(selectedCanvasIds.has(card.dataset.canvasId)));
+  }
+  const count=selectedCanvasIds.size;
+  renameCanvasButton.disabled=count!==1;
+  deleteCanvasesButton.disabled=count===0;
+  deleteCanvasesButton.textContent=count?`Delete selected (${count})`:'Delete selected';
+}
+async function activateCanvas(id){
+  const entry=libraryData.canvases.find(item=>item.id===id);
+  if(!entry)return;
+  if(authSession&&!cloudReady){setStatus('Cloud storage is not ready; finish the Supabase table setup first.');return;}
+  if(!await saveToDB())return;
+  try{
+    const payload=await readStoredValue(entry.key);
+    if(!payload)throw new Error('Canvas data is missing.');
+    activeDocumentKey=entry.key;
+    restorePayload(payload);
+    camera={x:canvasEl.clientWidth/2,y:canvasEl.clientHeight/2,zoom:DEFAULT_ZOOM};
+    dirty=false;selection=null;activeStroke=null;
+    closeCanvasLibrary.disabled=false;
+    shareCanvasButton.disabled=!authSession||!cloudReady;
+    canvasLibrary.hidden=true;
+    canvasMenuToggle.setAttribute('aria-expanded','false');
+    setStatus('Canvas opened');
+    requestRender();
+  }catch(error){setStatus(`Could not open canvas: ${error.message}`);}
+}
+function showCanvasNameDialog(mode,entry=null){
+  canvasNameDialogMode=mode;canvasNameDialogTarget=entry;
+  canvasNameDialogTitle.textContent=mode==='rename'?'Rename canvas':'Name this canvas';
+  saveCanvasNameButton.textContent='Save';
+  canvasNameInput.value=mode==='rename'?entry?.name||'':'';
+  canvasNameDialog.hidden=false;
+  requestAnimationFrame(()=>{canvasNameInput.focus();canvasNameInput.select();});
+}
+async function saveCanvasName(event){
+  event.preventDefault();
+  const name=canvasNameInput.value.trim().slice(0,60);
+  if(!name)return;
+  if(canvasNameDialogMode==='rename'||canvasNameDialogMode==='new-name'){
+    const target=libraryData.canvases.find(item=>item.id===canvasNameDialogTarget?.id);
+    if(!target)return;
+    const previousName=target.name;
+    target.name=name;
+    try{
+      await writeLibrary();
+      if(authSession&&cloudReady){
+        const payload=await readStoredValue(target.key);
+        if(!payload)throw new Error('Canvas data is missing.');
+        payload.updatedAt=Date.now();
+        await upsertCloudCanvas(target,payload);
+        target.updatedAt=payload.updatedAt;
+        const tx=db.transaction(STORE,'readwrite');
+        tx.objectStore(STORE).put(payload,target.key);
+        await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
+      }
+      canvasNameDialog.hidden=true;
+      if(canvasNameDialogMode==='rename')renderCanvasLibrary();
+    }catch(error){
+      target.name=previousName;
+      try{await writeLibrary();}catch(storageError){setStatus(`Could not save canvas name: ${storageError.message}`);return;}
+      setStatus(`Could not rename canvas: ${error.message}`);
+    }
+    return;
+  }
+}
+async function createCanvasAndOpen(){
+  if(authSession&&!cloudReady){setStatus('Cloud storage is not ready; finish the Supabase table setup first.');return;}
+  if(!db||!await saveToDB())return;
+  const id=makeCanvasId(),key=makeDocumentKey(id);
+  const entry={id,key,name:`Canvas ${libraryData.canvases.length+1}`,updatedAt:Date.now(),shareCode:''};
+  try{
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).put(emptyDocument(),key);
+      tx.objectStore(STORE).put({...libraryData,canvases:[...libraryData.canvases,entry]},LIBRARY_KEY);
+      tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+    });
+    libraryData.canvases.push(entry);
+    await writeLibrary();
+    let cloudSaveError=null;
+    if(authSession&&cloudReady){
+      try{await upsertCloudCanvas(entry,emptyDocument());}
+      catch(error){cloudSaveError=error;}
+    }
+    selectedCanvasIds.clear();
+    await activateCanvas(id);
+    if(activeDocumentKey===key)showCanvasNameDialog('new-name',entry);
+    if(cloudSaveError)setStatus(`Canvas created locally, but cloud save failed: ${cloudSaveError.message}`);
+  }catch(error){setStatus(`Could not create canvas: ${error.message}`);}
+}
+async function deleteSelectedCanvases(){
+  if(!selectedCanvasIds.size)return;
+  const count=selectedCanvasIds.size;
+  if(!window.confirm(`Delete ${count} selected canvas${count===1?'':'es'}? This cannot be undone.`))return;
+  const removed=libraryData.canvases.filter(item=>selectedCanvasIds.has(item.id));
+  const remaining=libraryData.canvases.filter(item=>!selectedCanvasIds.has(item.id));
+  try{
+    if(authSession&&cloudReady){
+      const {error}=await cloudClient.from(CLOUD_TABLE).delete().in('id',removed.map(entry=>entry.id));
+      if(error)throw error;
+    }
+    const tx=db.transaction(STORE,'readwrite'),store=tx.objectStore(STORE);
+    for(const entry of removed)store.delete(entry.key);
+    store.put({...libraryData,canvases:remaining},LIBRARY_KEY);
+    tx.oncomplete=()=>{
+      libraryData.canvases=remaining;
+      if(removed.some(entry=>entry.key===activeDocumentKey)){
+        activeDocumentKey=null;dirty=false;restorePayload(null);
+        closeCanvasLibrary.disabled=true;
+        shareCanvasButton.disabled=true;
+      }
+      selectedCanvasIds.clear();renderCanvasLibrary();
+    };
+    tx.onerror=()=>setStatus(`Could not delete canvases: ${tx.error?.message||'storage error'}`);
+  }catch(error){setStatus(`Could not delete canvases: ${error.message}`);}
+}
+function restorePayload(data) {
+  strokes.clear();chunks.clear();largeStrokes.clear();undoStack=[];redoStack=[];
+  strokeOrderDirty=true;
+  darkMode=Boolean(data&&data.darkMode);
+  settings={
+    pen:{color:'#202124',size:5,fill:false},
+    marker:{color:'#202124',size:12,fill:false},
+    highlighter:{color:'#ffe85c',size:24,fill:false,transparency:50,rotation:0},
+    eraser:{size:16},
+    calligraphy:{color:'#202124',size:8,fill:false,rotation:0},
+    pencil:{color:'#202124',size:7,fill:false,rotation:0},
+    shader:{size:28}
+  };
+  if(data && data.settings){
+    for(const name of DRAWING_TOOLS){
+      const saved=data.settings[name];
+      if(!saved)continue;
+      if(name!=='eraser'&&name!=='shader'&&typeof saved.color==='string'&&/^#[0-9a-f]{6}$/i.test(saved.color))settings[name].color=saved.color;
+      if(Number.isFinite(saved.size))settings[name].size=clamp(saved.size,1,48);
+      if(name!=='eraser'&&typeof saved.fill==='boolean')settings[name].fill=saved.fill;
+      if(name==='highlighter'&&Number.isFinite(saved.transparency))settings.highlighter.transparency=clamp(saved.transparency,0,75);
+      if(supportsRotation(name)&&Number.isFinite(saved.rotation))settings[name].rotation=normalizeAngle(saved.rotation);
+    }
+  }
+  savedLocations=Array.isArray(data&&data.savedLocations)
+    ?data.savedLocations.filter(location=>location&&typeof location.name==='string'&&Number.isFinite(location.x)&&Number.isFinite(location.y)&&Number.isFinite(location.zoom)&&location.zoom>=MIN_ZOOM&&location.zoom<=MAX_ZOOM).slice(0,100).map(location=>({name:location.name.slice(0,60),x:location.x,y:location.y,zoom:location.zoom}))
+    :[];
+  renderSavedLocations();
+  worldFill=data&&data.worldFill&&typeof data.worldFill.color==='string'&&/^#[0-9a-f]{6}$/i.test(data.worldFill.color)
+    ?{color:data.worldFill.color,opacity:clamp(Number(data.worldFill.opacity)||0,0,1)}
+    :null;
+  if(data && Array.isArray(data.strokes)){
+    for(const s of data.strokes){
+      if(!s || !s.id || !Array.isArray(s.points) || !s.points.length)continue;
+      s.bounds=s.bounds||boundsFor(s.points,s.width||1);s.chunkKeys=keysForBounds(s.bounds);
+      strokes.set(s.id,s);indexStroke(s);
+    }
+  }
+  if(data && data.camera && Number.isFinite(data.camera.zoom)){
+    camera={x:Number(data.camera.x)||0,y:Number(data.camera.y)||0,zoom:clamp(data.camera.zoom,MIN_ZOOM,MAX_ZOOM)};
+  }
+  updateToolUI();
+  updateThemeUI();
+}
+function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
+function resize() {
+  const rect=canvasEl.getBoundingClientRect();
+  dpr=Math.max(1,Math.min(2,window.devicePixelRatio||1));
+  canvasEl.width=Math.round(rect.width*dpr);canvasEl.height=Math.round(rect.height*dpr);
+  requestRender();
+}
+function screenToWorld(sx,sy) { return {x:(sx-camera.x)/camera.zoom,y:(sy-camera.y)/camera.zoom}; }
+function worldToScreen(wx,wy) { return {x:wx*camera.zoom+camera.x,y:wy*camera.zoom+camera.y}; }
+function visibleWorldBounds() {
+  const w=canvasEl.clientWidth,h=canvasEl.clientHeight;
+  return {minX:(0-camera.x)/camera.zoom,minY:(0-camera.y)/camera.zoom,maxX:(w-camera.x)/camera.zoom,maxY:(h-camera.y)/camera.zoom};
+}
+function visibleChunkKeys() {
+  const b=visibleWorldBounds();
+  const padding=74/camera.zoom;
+  const minCX=Math.floor((b.minX-padding)/CHUNK_SIZE),maxCX=Math.floor((b.maxX+padding)/CHUNK_SIZE);
+  const minCY=Math.floor((b.minY-padding)/CHUNK_SIZE),maxCY=Math.floor((b.maxY+padding)/CHUNK_SIZE);
+  if((maxCX-minCX+1)*(maxCY-minCY+1)>4096)return [...chunks.keys()];
+  const keys=[];
+  for(let y=minCY;y<=maxCY;y++)for(let x=minCX;x<=maxCX;x++)keys.push(chunkKey(x,y));
+  return keys;
+}
+function intersects(a,b){return !(a.maxX<b.minX||a.minX>b.maxX||a.maxY<b.minY||a.minY>b.maxY);}
+function pointInPolygon(point,polygon){
+  let inside=false;
+  for(let i=0,j=polygon.length-1;i<polygon.length;j=i++){
+    const a=polygon[i],b=polygon[j];
+    if((a.y>point.y)!==(b.y>point.y)&&point.x<(b.x-a.x)*(point.y-a.y)/(b.y-a.y)+a.x)inside=!inside;
+  }
+  return inside;
+}
+function polygonBounds(polygon){return boundsFor(polygon,0);}
+function segmentIntersections(a,b,polygon){
+  const values=[0,1],dx=b.x-a.x,dy=b.y-a.y;
+  for(let i=0;i<polygon.length;i++){
+    const c=polygon[i],d=polygon[(i+1)%polygon.length];
+    const ex=d.x-c.x,ey=d.y-c.y,denominator=dx*ey-dy*ex;
+    if(Math.abs(denominator)<1e-9)continue;
+    const t=((c.x-a.x)*ey-(c.y-a.y)*ex)/denominator;
+    const u=((c.x-a.x)*dy-(c.y-a.y)*dx)/denominator;
+    if(t>0&&t<1&&u>=0&&u<=1)values.push(t);
+  }
+  return [...new Set(values.sort((x,y)=>x-y))];
+}
+function splitPolyline(points,polygon){
+  if(points.length===1)return pointInPolygon(points[0],polygon)?{inside:[[points[0]]],outside:[]}:{inside:[],outside:[[points[0]]]};
+  const result={inside:[],outside:[]};
+  let previousGroup=null,previousRun=null;
+  for(let i=1;i<points.length;i++){
+    const a=points[i-1],b=points[i];
+    const cuts=segmentIntersections(a,b,polygon);
+    for(let j=1;j<cuts.length;j++){
+      const t0=cuts[j-1],t1=cuts[j],mid=(t0+t1)/2;
+      const start={x:a.x+(b.x-a.x)*t0,y:a.y+(b.y-a.y)*t0};
+      const end={x:a.x+(b.x-a.x)*t1,y:a.y+(b.y-a.y)*t1};
+      const group=pointInPolygon({x:a.x+(b.x-a.x)*mid,y:a.y+(b.y-a.y)*mid},polygon)?'inside':'outside';
+      if(group!==previousGroup){previousRun=[start,end];result[group].push(previousRun);}
+      else previousRun.push(end);
+      previousGroup=group;
+    }
+  }
+  return result;
+}
+function cloneStroke(stroke){
+  return {...stroke,points:stroke.points.map(point=>({...point})),bounds:{...stroke.bounds},indexBounds:stroke.indexBounds?{...stroke.indexBounds}:undefined,chunkKeys:[]};
+}
+function drawGrid() {
+  const b=visibleWorldBounds(), step=CHUNK_SIZE;
+  const minX=Math.floor(b.minX/step),maxX=Math.ceil(b.maxX/step);
+  const minY=Math.floor(b.minY/step),maxY=Math.ceil(b.maxY/step);
+  if(maxX-minX>120||maxY-minY>120)return;
+  ctx.save();ctx.lineWidth=1;ctx.strokeStyle=darkMode?'#393c44':'#e6e9ef';
+  for(let x=minX;x<=maxX;x++){const sx=worldToScreen(x*step,0).x;ctx.beginPath();ctx.moveTo(sx,0);ctx.lineTo(sx,canvasEl.clientHeight);ctx.stroke();}
+  for(let y=minY;y<=maxY;y++){const sy=worldToScreen(0,y*step).y;ctx.beginPath();ctx.moveTo(0,sy);ctx.lineTo(canvasEl.clientWidth,sy);ctx.stroke();}
+  ctx.restore();
+}
+function drawStroke(stroke) {
+  const pts=stroke.points;if(!pts.length)return;
+  const strokeColor=displayColor(stroke.color);
+  const strokeScale=stroke.screenSize?1:camera.zoom;
+  ctx.save();ctx.globalAlpha=stroke.opacity??1;ctx.strokeStyle=strokeColor;ctx.fillStyle=strokeColor;
+  ctx.lineWidth=stroke.width*strokeScale;ctx.lineCap='round';ctx.lineJoin='round';
+  if(stroke.tool==='shader'){
+    for(const point of pts){
+      const p=worldToScreen(point.x,point.y),radius=Math.max(1,stroke.width*strokeScale/2);
+      const color=displayColor(point.color||'#202124');
+      const gradient=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,radius);
+      gradient.addColorStop(0,`${color}66`);gradient.addColorStop(.65,`${color}2b`);gradient.addColorStop(1,`${color}00`);
+      ctx.fillStyle=gradient;ctx.beginPath();ctx.arc(p.x,p.y,radius,0,Math.PI*2);ctx.fill();
+    }
+    ctx.restore();return;
+  }
+  if(pts.length===1&&supportsRotation(stroke.tool)){
+    drawRotatedNibPoints(stroke,pts);
+    ctx.restore();return;
+  }
+  if(pts.length===1){const p=worldToScreen(pts[0].x,pts[0].y);ctx.beginPath();ctx.arc(p.x,p.y,Math.max(.5,stroke.width*strokeScale/2),0,Math.PI*2);ctx.fill();}
+  else {
+    ctx.beginPath();const first=worldToScreen(pts[0].x,pts[0].y);ctx.moveTo(first.x,first.y);
+    for(let i=1;i<pts.length;i++){const p=worldToScreen(pts[i].x,pts[i].y);ctx.lineTo(p.x,p.y);}
+    if(stroke.fillRegion){ctx.closePath();ctx.fill();}
+    if(stroke.tool==='calligraphy'){
+      for(let i=1;i<pts.length;i++){
+        const a=worldToScreen(pts[i-1].x,pts[i-1].y),b=worldToScreen(pts[i].x,pts[i].y);
+          const angle=Math.atan2(b.y-a.y,b.x-a.x)-Math.PI/4-(stroke.rotation||0)*Math.PI/180;
+        ctx.lineWidth=stroke.width*strokeScale*(.18+.82*Math.abs(Math.sin(angle)));
+        ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
+      }
+      }else if(stroke.tool==='highlighter'||stroke.tool==='pencil'){
+        drawRotatedNibPoints(stroke,pts);
+        ctx.restore();return;
+      }else{
+        if(stroke.tool==='pencil')ctx.lineCap='butt';
+        ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+function drawRotatedNibPoints(stroke,points){
+  const nibLength=Math.max(1,stroke.width*(stroke.screenSize?1:camera.zoom));
+  const nibWidth=Math.max(1,nibLength*(stroke.tool==='highlighter'?.42:.28));
+  const angle=(stroke.rotation||0)*Math.PI/180;
+  const drawDab=point=>{
+    const p=worldToScreen(point.x,point.y);
+    ctx.save();ctx.translate(p.x,p.y);ctx.rotate(angle);
+    ctx.beginPath();ctx.ellipse(0,0,nibLength/2,nibWidth/2,0,0,Math.PI*2);ctx.fill();ctx.restore();
+  };
+  if(points.length===1){drawDab(points[0]);return;}
+  for(let i=1;i<points.length;i++){
+    const start=worldToScreen(points[i-1].x,points[i-1].y);
+    const end=worldToScreen(points[i].x,points[i].y);
+    const clipped=clipSegment(start,end,-nibLength/2,canvasEl.clientWidth+nibLength/2,-nibLength/2,canvasEl.clientHeight+nibLength/2);
+    if(!clipped)continue;
+    const length=Math.hypot(clipped.end.x-clipped.start.x,clipped.end.y-clipped.start.y);
+    const spacing=Math.max(1,nibWidth*.3,length/512);
+    for(let distance=0;distance<length;distance+=spacing){
+      const ratio=distance/length;
+      const screen={x:clipped.start.x+(clipped.end.x-clipped.start.x)*ratio,y:clipped.start.y+(clipped.end.y-clipped.start.y)*ratio};
+      drawDab(screenToWorld(screen.x,screen.y));
+    }
+  }
+  drawDab(points[points.length-1]);
+}
+function clipSegment(start,end,left,right,top,bottom){
+  const dx=end.x-start.x,dy=end.y-start.y;
+  let t0=0,t1=1;
+  const clips=[[-dx,start.x-left],[dx,right-start.x],[-dy,start.y-top],[dy,bottom-start.y]];
+  for(const [p,q] of clips){
+    if(p===0){if(q<0)return null;continue;}
+    const ratio=q/p;
+    if(p<0){if(ratio>t1)return null;t0=Math.max(t0,ratio);}
+    else{if(ratio<t0)return null;t1=Math.min(t1,ratio);}
+  }
+  return{start:{x:start.x+dx*t0,y:start.y+dy*t0},end:{x:start.x+dx*t1,y:start.y+dy*t1}};
+}
+function drawBrushCursor() {
+  if(!cursorPosition||!DRAWING_TOOLS.includes(tool))return;
+  if(toolRotationDrag&&rotationPreviewPosition){
+    drawRotatingNibPreview(rotationPreviewPosition);
+    return;
+  }
+  const width=strokeWidthFor();
+  const radius=Math.max(.5,width/2);
+  if(tool!=='eraser'){
+    ctx.save();ctx.beginPath();ctx.arc(cursorPosition.x,cursorPosition.y,radius,0,Math.PI*2);
+    ctx.lineWidth=1.5;ctx.strokeStyle=displayColor(currentSettings().color||'#202124');ctx.stroke();ctx.restore();return;
+  }
+  function drawRotatingNibPreview(position){
+    const config=currentSettings();
+    const screenPoint=position;
+    const width=Math.max(2,config.size);
+    const nibWidth=Math.max(1,width*(tool==='highlighter'?.42:.28));
+    const angle=(config.rotation||0)*Math.PI/180;
+    ctx.save();ctx.translate(screenPoint.x,screenPoint.y);ctx.rotate(angle);
+    ctx.beginPath();ctx.ellipse(0,0,width/2,nibWidth/2,0,0,Math.PI*2);
+    ctx.fillStyle=displayColor(config.color||'#202124');ctx.fill();
+    ctx.lineWidth=1.5;ctx.strokeStyle=darkMode?'#fff':'#202124';ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-width/2,-nibWidth/2);ctx.lineTo(-width/2,nibWidth/2);
+    ctx.strokeStyle=darkMode?'#202124':'#fff';ctx.lineWidth=1;ctx.stroke();
+    ctx.restore();
+  }
+  const pixelRadius=Math.ceil((radius+2)*dpr);
+  const centerX=Math.round(cursorPosition.x*dpr),centerY=Math.round(cursorPosition.y*dpr);
+  const left=Math.max(0,centerX-pixelRadius),top=Math.max(0,centerY-pixelRadius);
+  const right=Math.min(canvasEl.width,centerX+pixelRadius+1),bottom=Math.min(canvasEl.height,centerY+pixelRadius+1);
+  const pixels=ctx.getImageData(left,top,right-left,bottom-top);
+  const segments=Math.max(48,Math.ceil(2*Math.PI*radius/4));
+  ctx.save();ctx.lineWidth=1.5;ctx.lineCap='butt';
+  for(let i=0;i<segments;i++){
+    const start=(i/segments)*Math.PI*2,end=((i+1)/segments)*Math.PI*2;
+    const mid=(start+end)/2;
+    const px=clamp(Math.round(centerX+Math.cos(mid)*radius*dpr)-left,0,right-left-1);
+    const py=clamp(Math.round(centerY+Math.sin(mid)*radius*dpr)-top,0,bottom-top-1);
+    const offset=(py*(right-left)+px)*4;
+    const isBlack=pixels.data[offset]<80&&pixels.data[offset+1]<80&&pixels.data[offset+2]<80;
+    ctx.strokeStyle=isBlack?'#fff':'#000';
+    ctx.beginPath();
+    ctx.arc(cursorPosition.x,cursorPosition.y,radius,start,end);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+function selectedStrokes(){return selection?selection.ids.map(id=>strokes.get(id)).filter(Boolean):[];}
+function selectionBounds(){
+  ensureScreenStrokeBounds();
+  const selected=selectedStrokes();
+  if(!selected.length)return null;
+  return selected.reduce((bounds,stroke)=>({
+    minX:Math.min(bounds.minX,stroke.bounds.minX),minY:Math.min(bounds.minY,stroke.bounds.minY),
+    maxX:Math.max(bounds.maxX,stroke.bounds.maxX),maxY:Math.max(bounds.maxY,stroke.bounds.maxY)
+  }),{minX:Infinity,minY:Infinity,maxX:-Infinity,maxY:-Infinity});
+}
+function drawSelection(){
+  if(!selection)return;
+  const b=selectionBounds();if(!b)return;
+  const a=worldToScreen(b.minX,b.minY),c=worldToScreen(b.maxX,b.maxY);
+  const top={x:(a.x+c.x)/2,y:a.y},handle={x:top.x,y:top.y-24};
+  drawContrastDots([{x:a.x,y:a.y},{x:c.x,y:a.y},{x:c.x,y:c.y},{x:a.x,y:c.y}],true);
+  ctx.save();ctx.strokeStyle='#526ee8';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(top.x,top.y);ctx.lineTo(handle.x,handle.y);ctx.stroke();
+  ctx.beginPath();ctx.arc(handle.x,handle.y,7,0,Math.PI*2);ctx.fillStyle=displayColor('#f7f8fa');ctx.fill();ctx.stroke();
+  ctx.restore();
+}
+function drawContrastDots(points,close=false){
+  if(points.length<2)return;
+  const path=close?[...points,points[0]]:points;
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for(const point of path){
+    minX=Math.min(minX,point.x);minY=Math.min(minY,point.y);
+    maxX=Math.max(maxX,point.x);maxY=Math.max(maxY,point.y);
+  }
+  const left=clamp(Math.floor(minX*dpr-2),0,canvasEl.width);
+  const top=clamp(Math.floor(minY*dpr-2),0,canvasEl.height);
+  const right=clamp(Math.ceil(maxX*dpr+3),0,canvasEl.width);
+  const bottom=clamp(Math.ceil(maxY*dpr+3),0,canvasEl.height);
+  if(right<=left||bottom<=top)return;
+  const width=right-left,pixels=ctx.getImageData(left,top,width,bottom-top).data;
+  ctx.save();ctx.lineWidth=2;ctx.lineCap='round';
+  for(let i=1;i<path.length;i++){
+    const start=path[i-1],end=path[i],dx=end.x-start.x,dy=end.y-start.y;
+    const length=Math.hypot(dx,dy);
+    for(let distance=0;distance<=length;distance+=6){
+      const ratio=length?Math.min(distance/length,1):0;
+      const x=start.x+dx*ratio,y=start.y+dy*ratio;
+      const px=clamp(Math.round(x*dpr)-left,0,width-1);
+      const py=clamp(Math.round(y*dpr)-top,0,bottom-top-1);
+      const offset=(py*width+px)*4;
+      const isWhite=Math.min(pixels[offset],pixels[offset+1],pixels[offset+2])>210;
+      ctx.fillStyle=isWhite?'#000':'#fff';
+      ctx.beginPath();ctx.arc(x,y,1.2,0,Math.PI*2);ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+function drawLasso(){
+  if(!activeLasso||activeLasso.length<2)return;
+  drawContrastDots(activeLasso.map(point=>worldToScreen(point.x,point.y)));
+}
+function updateRulerUI(){
+  rulerEl.hidden=!rulerEl.classList.contains('visible');
+  rulerEl.style.left=`${rulerGeometry.x}px`;
+  rulerEl.style.top=`${rulerGeometry.y}px`;
+  rulerEl.style.transform=`translate(-50%,-50%) rotate(${rulerGeometry.angle}rad)`;
+}
+function pointOnRuler(point){
+  if(rulerEl.hidden)return false;
+  const dx=point.x-rulerGeometry.x,dy=point.y-rulerGeometry.y;
+  const cosine=Math.cos(rulerGeometry.angle),sine=Math.sin(rulerGeometry.angle);
+  const localX=dx*cosine+dy*sine,localY=-dx*sine+dy*cosine;
+  return Math.abs(localX)<window.innerWidth*.8&&Math.abs(localY)<22;
+}
+function selectionSnapshot(value=selection){
+  return value?{ids:[...value.ids],polygon:value.polygon.map(point=>({...point}))}:null;
+}
+function applyStrokeStates(from,to){
+  for(const stroke of from){
+    const current=strokes.get(stroke.id);
+    if(current)unindexStroke(current);
+    strokes.delete(stroke.id);
+  }
+  for(const value of to){
+    const stroke=cloneStroke(value);
+    strokes.set(stroke.id,stroke);indexStroke(stroke);
+  }
+  strokeOrderDirty=true;
+}
+function recordGeometryChange(before,after,beforeSelection,afterSelection){
+  applyStrokeStates(before,after);
+  selection=selectionSnapshot(afterSelection);
+  undoStack.push({type:'geometry',before:before.map(cloneStroke),after:after.map(cloneStroke),beforeSelection:selectionSnapshot(beforeSelection),afterSelection:selectionSnapshot(afterSelection)});
+  redoStack=[];markDirty();requestRender();updateButtons();
+}
+function makeStrokeFragment(stroke,points,suffix){
+  const fragment=cloneStroke(stroke);
+  fragment.id=`${stroke.id}_${suffix}_${Math.random().toString(36).slice(2,7)}`;
+  fragment.points=points.map(point=>({...point}));
+  fragment.fillRegion=stroke.fillRegion&&suffix==='inside';
+  fragment.bounds=fragment.screenSize?screenStrokeWorldBounds(fragment):boundsFor(fragment.points,fragment.width);
+  if(fragment.screenSize)fragment.indexBounds=centerlineBounds(fragment.points);
+  return fragment;
+}
+function finishLasso(){
+  ensureScreenStrokeBounds();
+  let polygon=activeLasso;activeLasso=null;
+  if(!polygon||polygon.length<4){requestRender();return;}
+  const first=polygon[0],last=polygon[polygon.length-1];
+  if(Math.hypot(first.x-last.x,first.y-last.y)>18/camera.zoom){requestRender();return;}
+  polygon=polygon.slice(0,-1);
+  const bounds=polygonBounds(polygon),before=[],after=[],selectedIds=[];
+  for(const stroke of strokes.values()){
+    if(!intersects(stroke.bounds,bounds))continue;
+    if(stroke.fillRegion){
+      const hit=stroke.points.some(point=>pointInPolygon(point,polygon))||pointInPolygon({x:(stroke.bounds.minX+stroke.bounds.maxX)/2,y:(stroke.bounds.minY+stroke.bounds.maxY)/2},polygon);
+      if(!hit)continue;
+      before.push(cloneStroke(stroke));
+      const fragment=makeStrokeFragment(stroke,stroke.points,'inside');
+      fragment.id=`${stroke.id}_sel_${Math.random().toString(36).slice(2,7)}`;
+      after.push(fragment);selectedIds.push(fragment.id);continue;
+    }
+    const parts=splitPolyline(stroke.points,polygon);
+    if(!parts.inside.length)continue;
+    before.push(cloneStroke(stroke));
+    for(const points of parts.outside)if(points.length)after.push(makeStrokeFragment(stroke,points,'outside'));
+    for(const points of parts.inside)if(points.length){
+      const fragment=makeStrokeFragment(stroke,points,'inside');
+      after.push(fragment);selectedIds.push(fragment.id);
+    }
+  }
+  if(!before.length){selection=null;requestRender();return;}
+  const beforeSelection=selectionSnapshot();
+  const afterSelection=selectedIds.length?{ids:selectedIds,polygon}:null;
+  recordGeometryChange(before,after,beforeSelection,afterSelection);
+}
+function beginSelectionTransform(point){
+  const bounds=selectionBounds();if(!bounds)return false;
+  const a=worldToScreen(bounds.minX,bounds.minY),b=worldToScreen(bounds.maxX,bounds.maxY);
+  const handle={x:(a.x+b.x)/2,y:a.y-24};
+  const rotating=Math.hypot(point.x-handle.x,point.y-handle.y)<=13;
+  const world=screenToWorld(point.x,point.y);
+  if(!rotating&&!pointInPolygon(world,selection.polygon)&&!intersects({minX:world.x,minY:world.y,maxX:world.x,maxY:world.y},bounds))return false;
+  const selected=selectedStrokes().map(cloneStroke);
+  const center={x:(bounds.minX+bounds.maxX)/2,y:(bounds.minY+bounds.maxY)/2};
+  selectionTransform={
+    mode:rotating?'rotate':'move',start:point,center,
+    startAngle:Math.atan2(world.y-center.y,world.x-center.x),
+    before:selected,polygon:selection.polygon.map(p=>({...p}))
+  };
+  pointerMode=rotating?'selection-rotate':'selection-move';
+  return true;
+}
+function updateSelectionTransform(point){
+  if(!selectionTransform)return;
+  const currentIds=selection.ids;
+  const source=selectionTransform.before;
+  let angle=0,dx=0,dy=0;
+  if(selectionTransform.mode==='rotate'){
+    const world=screenToWorld(point.x,point.y);
+    angle=Math.atan2(world.y-selectionTransform.center.y,world.x-selectionTransform.center.x)-selectionTransform.startAngle;
+  }else{
+    dx=(point.x-selectionTransform.start.x)/camera.zoom;
+    dy=(point.y-selectionTransform.start.y)/camera.zoom;
+  }
+  const cosine=Math.cos(angle),sine=Math.sin(angle);
+  const transformPoint=point=>{
+    if(selectionTransform.mode==='move')return{x:point.x+dx,y:point.y+dy};
+    const x=point.x-selectionTransform.center.x,y=point.y-selectionTransform.center.y;
+    return{x:selectionTransform.center.x+x*cosine-y*sine,y:selectionTransform.center.y+x*sine+y*cosine};
+  };
+  const transformed=source.map(stroke=>{
+    const result=cloneStroke(stroke);result.points=result.points.map(transformPoint);
+    result.bounds=result.screenSize?screenStrokeWorldBounds(result):boundsFor(result.points,result.width);
+    if(result.screenSize)result.indexBounds=centerlineBounds(result.points);
+    return result;
+  });
+  applyStrokeStates(selectedStrokes(),transformed);
+  selection={ids:currentIds,polygon:selectionTransform.polygon.map(transformPoint)};
+  requestRender();
+}
+function finishSelectionTransform(){
+  if(!selectionTransform)return;
+  const before=selectionTransform.before,after=selectedStrokes().map(cloneStroke);
+  const beforeSelection={ids:before.map(stroke=>stroke.id),polygon:selectionTransform.polygon};
+  const afterSelection=selectionSnapshot();
+  selectionTransform=null;
+  undoStack.push({type:'geometry',before,after,beforeSelection,afterSelection});
+  redoStack=[];markDirty();updateButtons();
+}
+function sampleCanvasColor(point){
+  const x=clamp(Math.round(point.x*dpr),0,canvasEl.width-1),y=clamp(Math.round(point.y*dpr),0,canvasEl.height-1);
+  const [r,g,b]=ctx.getImageData(x,y,1,1).data;
+  return displayColor(`#${[r,g,b].map(value=>value.toString(16).padStart(2,'0')).join('')}`);
+}
+function render() {
+  renderQueued=false;
+  ensureScreenStrokeBounds();
+  const w=canvasEl.clientWidth,h=canvasEl.clientHeight;
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle=displayColor('#f7f8fa');ctx.fillRect(0,0,w,h);
+  if(worldFill){
+    ctx.save();ctx.globalAlpha=worldFill.opacity;ctx.fillStyle=displayColor(worldFill.color);ctx.fillRect(0,0,w,h);ctx.restore();
+  }
+  drawGrid();
+  const b=visibleWorldBounds(), seen=new Set();
+  for(const key of visibleChunkKeys()){
+    const set=chunks.get(key);if(!set)continue;
+    for(const id of set)seen.add(id);
+  }
+  for(const id of largeStrokes)seen.add(id);
+  ensureStrokeOrder();
+  const visibleStrokes=[...seen].sort((a,b)=>(strokeOrder.get(a)??Infinity)-(strokeOrder.get(b)??Infinity));
+  for(const id of visibleStrokes){
+    const stroke=strokes.get(id);
+    if(stroke&&intersects(stroke.bounds,b))drawStroke(stroke);
+  }
+  if(activeStroke)drawStroke(activeStroke);
+  drawSelection();drawLasso();
+  drawBrushCursor();
+  const percent=camera.zoom*100;
+  zoomLabel.textContent=`${percent<.01?percent.toExponential(1):Math.round(percent).toLocaleString()}%`;
+}
+function requestRender(){if(renderQueued)return;renderQueued=true;requestAnimationFrame(render);}
+function eventPos(e){const r=canvasEl.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
+function startStroke(p) {
+  const world=screenToWorld(p.x,p.y);
+  const config=currentSettings();
+  const width=strokeWidthFor();
+  activeStroke={
+    id:`s_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+    tool,color:tool==='eraser'?'#f7f8fa':tool==='shader'?'#202124':config.color,width,
+    rotation:supportsRotation(tool)?config.rotation:0,
+    opacity:tool==='eraser'?1:opacityFor(),
+    fillEnabled:tool!=='eraser'&&config.fill,screenSize:true,
+    points:[{...world,...(tool==='shader'?{color:sampleCanvasColor(p)}:{})}],
+    bounds:screenStrokeWorldBounds({points:[world],width}),indexBounds:centerlineBounds([world]),chunkKeys:[]
+  };
+  pointerMode='draw';requestRender();
+}
+function extendStroke(p) {
+  if(!activeStroke)return;
+  const world=screenToWorld(p.x,p.y),pts=activeStroke.points,last=pts[pts.length-1];
+  if(Math.hypot(world.x-last.x,world.y-last.y)<1.1/camera.zoom)return;
+  pts.push({...world,...(activeStroke.tool==='shader'?{color:sampleCanvasColor(p)}:{})});
+  activeStroke.bounds=boundsFor(pts,activeStroke.width/camera.zoom);
+  activeStroke.indexBounds=centerlineBounds(pts);
+  requestRender();
+}
+function finishStroke() {
+  if(!activeStroke)return;
+  ensureScreenStrokeBounds();
+  const stroke=activeStroke;activeStroke=null;
+  if(stroke.tool==='eraser'){
+    const hit=[];
+    for(const s of strokes.values())if(intersects(s.bounds,stroke.bounds))hit.push(s.id);
+    for(const id of hit)removeStroke(id,true);
+  } else {
+    if(stroke.fillEnabled&&stroke.points.length>2){
+      const first=stroke.points[0],last=stroke.points[stroke.points.length-1];
+      const closed=Math.hypot(first.x-last.x,first.y-last.y)<=Math.max(1.5,stroke.width*.5);
+      if(closed)stroke.fillRegion=true;
+      else{
+        stroke.worldFillBefore=worldFill?{...worldFill}:null;
+        stroke.worldFillAfter={color:stroke.color,opacity:stroke.opacity};
+        worldFill=stroke.worldFillAfter;
+      }
+    }
+    addStroke(stroke,true);
+  }
+  pointerMode=null;requestRender();
+}
+function panBy(dx,dy){camera.x+=dx;camera.y+=dy;markCameraDirty();requestRender();}
+function markCameraDirty(){dirty=true;clearTimeout(saveTimer);saveTimer=setTimeout(saveToDB,900);}
+function zoomAt(sx,sy,factor) {
+  const before=screenToWorld(sx,sy);
+  camera.zoom=clamp(camera.zoom*factor,MIN_ZOOM,MAX_ZOOM);
+  camera.x=sx-before.x*camera.zoom;camera.y=sy-before.y*camera.zoom;
+  markCameraDirty();requestRender();
+}
+canvasEl.addEventListener('pointerdown',e=>{
+  if(e.button===2&&supportsRotation(tool)){
+    e.preventDefault();canvasEl.setPointerCapture(e.pointerId);
+    rotationPreviewPosition=eventPos(e);
+    toolRotationDrag={pointerId:e.pointerId,startX:e.clientX,startRotation:currentSettings().rotation};
+    pointerMode='tool-rotation';return;
+  }
+  canvasEl.setPointerCapture(e.pointerId);pointers.set(e.pointerId,eventPos(e));
+  if(pointers.size===2){
+    activeStroke=null;pendingStrokeStart=null;pointerMode='pinch';
+    const a=[...pointers.values()];pinchStart={distance:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y),zoom:camera.zoom,mid:{x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2},camera:{...camera}};
+    return;
+  }
+  const p=eventPos(e);lastPointer=p;
+  ensureScreenStrokeBounds();
+  if(spaceDown||e.button===1){pointerMode='pan';return;}
+  if(tool==='ruler')return;
+  if(DRAWING_TOOLS.includes(tool)&&pointOnRuler(p)){pointerMode='ruler-gap';return;}
+  if(tool==='lasso'){selection=null;activeLasso=[screenToWorld(p.x,p.y)];pointerMode='lasso';requestRender();return;}
+  if(selection&&beginSelectionTransform(p)){requestRender();return;}
+  if(selection){selection=null;requestRender();}
+  if(!DRAWING_TOOLS.includes(tool))return;
+  if(!toolSettings.hidden){pendingStrokeStart=p;pointerMode='draw-pending';return;}
+  startStroke(p);
+});
+canvasEl.addEventListener('pointermove',e=>{
+  cursorPosition=eventPos(e);requestRender();
+  if(toolRotationDrag&&toolRotationDrag.pointerId===e.pointerId){
+    rotationPreviewPosition=cursorPosition;
+    currentSettings().rotation=normalizeAngle(toolRotationDrag.startRotation+(e.clientX-toolRotationDrag.startX)*.75);
+    toolRotationInput.value=String(Math.round(currentSettings().rotation)%360);
+    toolRotationValue.value=`${toolRotationInput.value}°`;
+    requestRender();return;
+  }
+  if(!pointers.has(e.pointerId))return;
+  const p=cursorPosition;pointers.set(e.pointerId,p);
+  if(pointers.size>=2&&pinchStart){
+    const a=[...pointers.values()],dist=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
+    const mid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};
+    const world=screenToWorld(pinchStart.mid.x,pinchStart.mid.y);
+    camera.zoom=clamp(pinchStart.zoom*(dist/Math.max(1,pinchStart.distance)),MIN_ZOOM,MAX_ZOOM);
+    camera.x=mid.x-world.x*camera.zoom;camera.y=mid.y-world.y*camera.zoom;
+    markCameraDirty();requestRender();return;
+  }
+  if(pointerMode==='pan'&&lastPointer){panBy(p.x-lastPointer.x,p.y-lastPointer.y);lastPointer=p;}
+  else if(pointerMode==='draw-pending'){
+    if(pendingStrokeStart&&Math.hypot(p.x-pendingStrokeStart.x,p.y-pendingStrokeStart.y)>=4){
+      const start=pendingStrokeStart;pendingStrokeStart=null;startStroke(start);
+      if(pointOnRuler(p)){finishStroke();pointerMode='ruler-gap';}
+      else extendStroke(p);
+    }
+  }
+  else if(pointerMode==='draw'){
+    if(pointOnRuler(p)){finishStroke();pointerMode='ruler-gap';}
+    else extendStroke(p);
+  }else if(pointerMode==='ruler-gap'&&!pointOnRuler(p))startStroke(p);
+  else if(pointerMode==='lasso'){
+    const world=screenToWorld(p.x,p.y),last=activeLasso[activeLasso.length-1];
+    if(Math.hypot(world.x-last.x,world.y-last.y)>2/camera.zoom){activeLasso.push(world);requestRender();}
+  }else if(pointerMode==='selection-move'||pointerMode==='selection-rotate')updateSelectionTransform(p);
+});
+canvasEl.addEventListener('pointerleave',()=>{if(pointers.size===0){cursorPosition=null;requestRender();}});
+canvasEl.addEventListener('contextmenu',e=>e.preventDefault());
+function endPointer(e){
+  if(toolRotationDrag&&toolRotationDrag.pointerId===e.pointerId){
+    toolRotationDrag=null;rotationPreviewPosition=null;markDirty();updateToolUI();
+  }
+  pointers.delete(e.pointerId);
+  if(pointers.size<2)pinchStart=null;
+  if(pointerMode==='draw'&&pointers.size===0)finishStroke();
+  if(pointerMode==='draw-pending'&&pointers.size===0)pendingStrokeStart=null;
+  if(pointerMode==='lasso'&&pointers.size===0)finishLasso();
+  if((pointerMode==='selection-move'||pointerMode==='selection-rotate')&&pointers.size===0)finishSelectionTransform();
+  if(pointers.size===0){pointerMode=null;lastPointer=null;}
+}
+canvasEl.addEventListener('pointerup',endPointer);
+canvasEl.addEventListener('pointercancel',endPointer);
+canvasEl.addEventListener('wheel',e=>{e.preventDefault();const p=eventPos(e);zoomAt(p.x,p.y,Math.exp(-e.deltaY*.0025));},{passive:false});
+window.addEventListener('keydown',e=>{
+  if(!canvasNameDialog.hidden&&e.key==='Escape'){
+    canvasNameDialog.hidden=true;
+    return;
+  }
+  if(!canvasLibrary.hidden){
+    if(e.key==='Escape'){
+      if(activeDocumentKey){canvasLibrary.hidden=true;canvasMenuToggle.setAttribute('aria-expanded','false');}
+    }
+    return;
+  }
+  if(e.code==='Space'){spaceDown=true;e.preventDefault();}
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();undo();}
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redo();}
+  if(e.key==='Escape'){setToolSettingsOpen(false);setTrayExpanded(false);}
+  if(e.key.toLowerCase()==='d')setTool('pen');
+  if(e.key.toLowerCase()==='m')setTool('marker');
+  if(e.key.toLowerCase()==='h')setTool('highlighter');
+  if(e.key.toLowerCase()==='e')setTool('eraser');
+  if(e.key.toLowerCase()==='l')setTool('lasso');
+  if(e.key.toLowerCase()==='c')setTool('calligraphy');
+  if(e.key.toLowerCase()==='p')setTool('pencil');
+  if(e.key.toLowerCase()==='s')setTool('shader');
+  if(e.key.toLowerCase()==='r')setTool('ruler');
+});
+window.addEventListener('keyup',e=>{if(e.code==='Space')spaceDown=false;});
+function undo(){
+  const a=undoStack.pop();if(!a)return;
+  if(a.type==='geometry'){
+    applyStrokeStates(a.after,a.before);selection=selectionSnapshot(a.beforeSelection);
+  }else if(a.type==='add'){
+    unindexStroke(a.stroke);strokes.delete(a.stroke.id);strokeOrderDirty=true;
+    if(a.worldFillAfter)worldFill=a.worldFillBefore?{...a.worldFillBefore}:null;
+  }else{strokes.set(a.stroke.id,a.stroke);strokeOrderDirty=true;indexStroke(a.stroke);}
+  redoStack.push(a);markDirty();requestRender();updateButtons();
+}
+function redo(){
+  const a=redoStack.pop();if(!a)return;
+  if(a.type==='geometry'){
+    applyStrokeStates(a.before,a.after);selection=selectionSnapshot(a.afterSelection);
+  }else if(a.type==='add'){
+    strokes.set(a.stroke.id,a.stroke);strokeOrderDirty=true;indexStroke(a.stroke);
+    if(a.worldFillAfter)worldFill={...a.worldFillAfter};
+  }else{unindexStroke(a.stroke);strokes.delete(a.stroke.id);strokeOrderDirty=true;}
+  undoStack.push(a);markDirty();requestRender();updateButtons();
+}
+function updateButtons(){document.getElementById('undo').disabled=!undoStack.length;document.getElementById('redo').disabled=!redoStack.length;}
+function renderSavedLocations(){
+  savedLocationsList.replaceChildren();
+  if(!savedLocations.length){
+    const empty=document.createElement('p');empty.className='saved-location-empty';empty.textContent='No saved locations yet.';
+    savedLocationsList.append(empty);return;
+  }
+  savedLocations.forEach((location,index)=>{
+    const row=document.createElement('div');row.className='saved-location-item';
+    const go=document.createElement('button');go.type='button';go.className='location-go';go.textContent=location.name;
+    go.title=`${location.name} · ${Math.round(location.zoom*100).toLocaleString()}%`;
+    go.onclick=()=>{
+      const centerX=canvasEl.clientWidth/2,centerY=canvasEl.clientHeight/2;
+      camera={x:centerX-location.x*location.zoom,y:centerY-location.y*location.zoom,zoom:location.zoom};
+      markCameraDirty();requestRender();savedLocationsPanel.hidden=true;savedLocationsToggle.setAttribute('aria-expanded','false');
+    };
+    const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.setAttribute('aria-label',`Remove ${location.name}`);
+    remove.onclick=()=>{savedLocations.splice(index,1);renderSavedLocations();markDirty();};
+    row.append(go,remove);savedLocationsList.append(row);
+  });
+}
+function saveCurrentLocation(){
+  if(savedLocations.length>=100){setStatus('Saved location limit reached');return;}
+  const name=locationNameInput.value.trim()||`Location ${savedLocations.length+1}`;
+  const center=screenToWorld(canvasEl.clientWidth/2,canvasEl.clientHeight/2);
+  savedLocations.push({name:name.slice(0,60),x:center.x,y:center.y,zoom:camera.zoom});
+  locationNameInput.value='';
+  renderSavedLocations();markDirty();
+}
+function updateTransparencySlider(){
+  const progress=Number(toolTransparencyInput.value)/Number(toolTransparencyInput.max)*100;
+  const slider=toolTransparencyInput.closest('.transparency-slider');
+  slider.style.setProperty('--range-progress',`${progress}%`);
+  updateTransparencyPreview();
+}
+function updateTransparencyPreview(){
+  const rect=transparencyPreview.getBoundingClientRect();
+  if(!rect.width||!rect.height)return;
+  const ratio=Math.max(1,window.devicePixelRatio||1);
+  transparencyPreview.width=Math.round(rect.width*ratio);
+  transparencyPreview.height=Math.round(rect.height*ratio);
+  const preview=transparencyPreviewContext;
+  preview.setTransform(ratio,0,0,ratio,0,0);
+  preview.clearRect(0,0,rect.width,rect.height);
+  const tile=8;
+  for(let y=0;y<rect.height;y+=tile){
+    for(let x=0;x<rect.width;x+=tile){
+      preview.fillStyle=((Math.floor(x/tile)+Math.floor(y/tile))%2)?'#343b49':'#252a36';
+      preview.fillRect(x,y,tile,tile);
+    }
+  }
+  preview.globalAlpha=1-Number(toolTransparencyInput.value)/100;
+  preview.strokeStyle=displayColor(settings.highlighter.color);
+  preview.lineWidth=Math.max(2,Math.min(14,settings.highlighter.size));
+  preview.lineCap='round';
+  preview.beginPath();
+  preview.moveTo(6,rect.height/2);
+  preview.lineTo(rect.width-6,rect.height/2);
+  preview.stroke();
+  preview.globalAlpha=1;
+}
+function updateBrushSizeControl(){
+  const config=currentSettings();
+  if(!config?.size)return;
+  const size=config.size;
+  const diameter=Math.max(4,size);
+  brushSizeCircle.style.width=`${diameter}px`;
+  brushSizeCircle.style.height=`${diameter}px`;
+  brushSizeCircle.style.backgroundColor=displayColor(config.color||'#8a8f99');
+  brushSizeCircle.style.setProperty('--brush-ring-color',darkMode?'#fff':'#202124');
+  brushSizeControl.setAttribute('aria-valuenow',String(size));
+  brushSizeControl.setAttribute('aria-valuetext',`${size} pixels`);
+  toolSizeInput.value=String(size);
+  toolSizeValue.value=String(size);
+}
+function positionToolChoices(){
+  const size=window.innerWidth<=700?Math.min(52,Math.max(32,window.innerWidth*.102)):trayExpanded?48:56;
+  const gap=window.innerWidth<=700?Math.min(4,Math.max(2,window.innerWidth*.008)):trayExpanded?6:8;
+  const step=size+gap;
+  for(const button of toolButtons){
+    const index=TOOL_ORDER.indexOf(button.dataset.tool);
+    const selected=button.dataset.tool===tool;
+    button.style.transform=`translateX(${(trayExpanded?index:0)*step}px)`;
+    button.setAttribute('aria-hidden',String(!trayExpanded&&!selected));
+    button.tabIndex=trayExpanded||selected?0:-1;
+  }
+}
+function updateToolUI(){
+  const config=settings[tool];
+  for(const button of toolButtons){
+    const selected=button.dataset.tool===tool;
+    button.classList.toggle('is-current',selected);
+    button.setAttribute('aria-pressed',String(selected));
+    button.setAttribute('aria-expanded',String(selected&&!toolSettings.hidden));
+    const indicator=button.querySelector('.tool-color-indicator');
+    if(indicator&&settings[button.dataset.tool]?.color)indicator.style.backgroundColor=displayColor(settings[button.dataset.tool].color);
+  }
+  positionToolChoices();
+  const hasSettings=DRAWING_TOOLS.includes(tool);
+  if(!hasSettings)toolSettings.hidden=true;
+  colorSetting.hidden=tool==='eraser'||tool==='shader'||tool==='lasso'||tool==='ruler';
+  fillSetting.hidden=tool==='eraser'||tool==='shader'||tool==='lasso'||tool==='ruler';
+  transparencySetting.hidden=tool!=='highlighter';
+  rotationSetting.hidden=!supportsRotation(tool);
+  toolSettingsTitle.textContent=`${tool[0].toUpperCase()}${tool.slice(1)} settings`;
+  if(config){
+    if(config.color)toolColorInput.value=config.color;
+    toolSizeInput.value=String(config.size);
+    toolSizeValue.value=String(config.size);
+    updateBrushSizeControl();
+    toolFillInput.checked=Boolean(config.fill);
+    if(supportsRotation(tool)){
+      toolRotationInput.value=String(Math.round(normalizeAngle(config.rotation)));
+      toolRotationValue.value=`${toolRotationInput.value}°`;
+      rotationPreview.style.transform=`rotate(${config.rotation}deg)`;
+      rotationPreview.style.backgroundColor=displayColor(config.color||'#202124');
+    }
+  }
+  if(tool==='highlighter'&&config){
+    toolTransparencyInput.value=String(config.transparency);
+    updateTransparencySlider();
+  }
+  canvasEl.style.cursor='none';
+  toolButtons.find(button=>button.dataset.tool==='ruler').classList.toggle('is-visible',!rulerEl.hidden);
+  requestRender();
+}
+function setTool(next){
+  if(!TOOL_ORDER.includes(next))return;
+  tool=next;
+  if(next==='ruler'){
+    rulerEl.classList.add('visible');
+    updateRulerUI();
+  }
+  updateToolUI();
+}
+function setTrayExpanded(open){
+  trayExpanded=open;
+  toolTray.classList.toggle('expanded',open);
+  positionToolChoices();
+  if(!open)setToolSettingsOpen(false);
+}
+function setToolSettingsOpen(open){
+  if(!DRAWING_TOOLS.includes(tool))open=false;
+  toolSettings.hidden=!open;
+  const activeButton=toolButtons.find(button=>button.dataset.tool===tool);
+  activeButton?.setAttribute('aria-expanded',String(open));
+}
+for(const button of toolButtons){
+  button.onclick=()=>{
+    const next=button.dataset.tool;
+    if(next!==tool){
+      setTool(next);
+      setTrayExpanded(true);
+      setToolSettingsOpen(false);
+    }else if(!trayExpanded)setTrayExpanded(true);
+    else if(next==='ruler'){
+      rulerEl.classList.toggle('visible');
+      updateRulerUI();
+      updateToolUI();
+    }else if(DRAWING_TOOLS.includes(next))setToolSettingsOpen(toolSettings.hidden);
+  };
+}
+document.addEventListener('pointerdown',e=>{
+  if(!e.target.closest('#toolTray')&&!e.target.closest('#toolSettings'))setTrayExpanded(false);
+  if(!e.target.closest('#savedLocationsPanel')&&!e.target.closest('#savedLocationsToggle')){
+    savedLocationsPanel.hidden=true;savedLocationsToggle.setAttribute('aria-expanded','false');
+  }
+});
+toolColorInput.oninput=e=>{
+  if(!currentSettings()?.color)return;
+  currentSettings().color=e.target.value;
+  updateToolUI();
+  updateBrushSizeControl();
+  if(tool==='highlighter')updateTransparencyPreview();
+  markDirty();
+};
+toolSizeInput.oninput=e=>{
+  if(!currentSettings()?.size)return;
+  currentSettings().size=Number(e.target.value);
+  updateBrushSizeControl();
+  requestRender();
+  markDirty();
+};
+brushSizeControl.addEventListener('pointerdown',e=>{
+  if(!currentSettings()?.size)return;
+  e.preventDefault();
+  brushSizeControl.setPointerCapture(e.pointerId);
+  brushSizeDrag={pointerId:e.pointerId,startY:e.clientY,startSize:currentSettings().size};
+});
+window.addEventListener('pointermove',e=>{
+  if(!brushSizeDrag||brushSizeDrag.pointerId!==e.pointerId)return;
+  const next=clamp(Math.round(brushSizeDrag.startSize+(brushSizeDrag.startY-e.clientY)*.5),1,48);
+  currentSettings().size=next;
+  updateBrushSizeControl();requestRender();markDirty();
+});
+function finishBrushSizeDrag(e){
+  if(brushSizeDrag?.pointerId===e.pointerId)brushSizeDrag=null;
+}
+window.addEventListener('pointerup',finishBrushSizeDrag);
+window.addEventListener('pointercancel',finishBrushSizeDrag);
+brushSizeControl.addEventListener('keydown',e=>{
+  if(!currentSettings()?.size)return;
+  let delta=0;
+  if(e.key==='ArrowUp'||e.key==='ArrowRight')delta=1;
+  else if(e.key==='ArrowDown'||e.key==='ArrowLeft')delta=-1;
+  else if(e.key==='PageUp')delta=5;
+  else if(e.key==='PageDown')delta=-5;
+  else if(e.key==='Home')currentSettings().size=1;
+  else if(e.key==='End')currentSettings().size=48;
+  else return;
+  if(delta)currentSettings().size=clamp(currentSettings().size+delta,1,48);
+  e.preventDefault();updateBrushSizeControl();requestRender();markDirty();
+});
+toolFillInput.onchange=e=>{
+  if(!currentSettings()||currentSettings().fill===undefined)return;
+  currentSettings().fill=e.target.checked;
+  markDirty();
+};
+toolTransparencyInput.oninput=e=>{
+  settings.highlighter.transparency=Number(e.target.value);
+  updateTransparencySlider();
+  requestRender();
+  markDirty();
+};
+toolRotationInput.oninput=e=>{
+  if(!supportsRotation(tool))return;
+  currentSettings().rotation=normalizeAngle(Number(e.target.value));
+  toolRotationValue.value=`${Math.round(currentSettings().rotation)}°`;
+  rotationPreview.style.transform=`rotate(${currentSettings().rotation}deg)`;
+  requestRender();markDirty();
+};
+resetRotationButton.onclick=()=>{
+  if(!supportsRotation(tool))return;
+  currentSettings().rotation=0;
+  toolRotationInput.value='0';toolRotationValue.value='0°';
+  rotationPreview.style.transform='rotate(0deg)';
+  requestRender();markDirty();
+};
+savedLocationsToggle.onclick=()=>{
+  const open=savedLocationsPanel.hidden;
+  savedLocationsPanel.hidden=!open;
+  savedLocationsToggle.setAttribute('aria-expanded',String(open));
+  if(open)locationNameInput.focus();
+};
+canvasMenuToggle.onclick=async()=>{
+  if(!await saveToDB())return;
+  closeCanvasLibrary.disabled=!activeDocumentKey;
+  showCanvasLibrary();
+};
+closeCanvasLibrary.onclick=()=>{if(activeDocumentKey){canvasLibrary.hidden=true;canvasMenuToggle.setAttribute('aria-expanded','false');}};
+authForm.addEventListener('submit',submitAuthForm);
+retryCloudSetupButton.onclick=retryCloudSetup;
+signOutButton.onclick=signOut;
+signOutFromLibraryButton.onclick=signOut;
+displayNameForm.addEventListener('submit',async event=>{
+  event.preventDefault();
+  const name=displayNameInput.value.trim().slice(0,60);
+  if(!name){displayNameInput.focus();return;}
+  const previousName=libraryData.displayName;
+  libraryData.displayName=name;
+  try{
+    if(authSession){
+      const {error}=await cloudClient.auth.updateUser({data:{display_name:name}});
+      if(error)throw error;
+    }
+    await writeLibrary();
+    libraryGreeting.textContent=`Hi, ${name}`;
+    renderCanvasLibrary();
+  }
+  catch(error){libraryData.displayName=previousName;setStatus(`Could not save your name: ${error.message}`);}
+});
+createCanvasButton.onclick=createCanvasAndOpen;
+renameCanvasButton.onclick=()=>{
+  if(selectedCanvasIds.size!==1)return;
+  const id=[...selectedCanvasIds][0];
+  showCanvasNameDialog('rename',libraryData.canvases.find(entry=>entry.id===id));
+};
+deleteCanvasesButton.onclick=deleteSelectedCanvases;
+canvasNameForm.addEventListener('submit',saveCanvasName);
+cancelCanvasNameButton.onclick=()=>{canvasNameDialog.hidden=true;};
+shareCanvasButton.onclick=async()=>{
+  const entry=libraryData.canvases.find(item=>item.key===activeDocumentKey);
+  if(!entry||!authSession||!cloudReady)return;
+  const previousCode=entry.shareCode;
+  if(!entry.shareCode)entry.shareCode=makeShareCode();
+  try{
+    const payload=await readStoredValue(entry.key);
+    if(!payload)throw new Error('Canvas data is missing.');
+    await writeLibrary();
+    await upsertCloudCanvas(entry,payload);
+    const link=new URL(location.href);
+    link.searchParams.set('room',entry.shareCode);
+    shareLinkInput.value=link.href;
+    shareOverlay.hidden=false;
+    shareLinkInput.focus();
+    shareLinkInput.select();
+  }catch(error){
+    entry.shareCode=previousCode||'';
+    try{await writeLibrary();}catch(storageError){setStatus(`Could not save room code: ${storageError.message}`);return;}
+    setStatus(`Could not create room link: ${error.message}`);
+  }
+};
+copyShareLinkButton.onclick=async()=>{
+  try{
+    await navigator.clipboard.writeText(shareLinkInput.value);
+    setStatus('Room link copied · access is not enabled yet');
+  }catch(error){
+    shareLinkInput.focus();
+    shareLinkInput.select();
+    setStatus(`Could not copy the room link: ${error.message}. The link is selected for manual copying.`);
+  }
+};
+closeShareDialogButton.onclick=()=>{shareOverlay.hidden=true;};
+shareOverlay.addEventListener('click',event=>{if(event.target===shareOverlay)shareOverlay.hidden=true;});
+function makeShareCode(){
+  const bytes=new Uint8Array(5);
+  if(globalThis.crypto?.getRandomValues)globalThis.crypto.getRandomValues(bytes);
+  else for(let i=0;i<bytes.length;i++)bytes[i]=Math.floor(Math.random()*256);
+  return Array.from(bytes,value=>value.toString(16).padStart(2,'0')).join('').toUpperCase();
+}
+saveLocationButton.onclick=saveCurrentLocation;
+locationNameInput.addEventListener('keydown',e=>{if(e.key==='Enter')saveCurrentLocation();});
+document.getElementById('undo').onclick=undo;
+document.getElementById('redo').onclick=redo;
+themeToggle.onclick=()=>{
+  darkMode=!darkMode;
+  updateThemeUI();
+  updateToolUI();
+  markDirty();
+  requestRender();
+};
+function pointerAngle(a,b){return Math.atan2(b.y-a.y,b.x-a.x);}
+function pointerMidpoint(a,b){return{x:(a.x+b.x)/2,y:(a.y+b.y)/2};}
+rulerSurface.addEventListener('pointerdown',e=>{
+  e.preventDefault();e.stopPropagation();
+  const point={x:e.clientX,y:e.clientY};
+  rulerSurface.setPointerCapture(e.pointerId);
+  if(e.pointerType==='touch'){
+    rulerPointers.set(e.pointerId,point);
+    if(rulerPointers.size>=2){
+      const [a,b]=[...rulerPointers.values()];
+      rulerDrag={mode:'gesture',startAngle:pointerAngle(a,b),startMid:pointerMidpoint(a,b),origin:{...rulerGeometry}};
+    }else{
+      rulerDrag={mode:'move',pointerId:e.pointerId,start:point,origin:{x:rulerGeometry.x,y:rulerGeometry.y}};
+    }
+  }else if(e.button===2){
+    rulerDrag={mode:'rotate',pointerId:e.pointerId,startAngle:Math.atan2(point.y-rulerGeometry.y,point.x-rulerGeometry.x),startRotation:rulerGeometry.angle};
+  }else{
+    rulerDrag={mode:'move',pointerId:e.pointerId,start:point,origin:{x:rulerGeometry.x,y:rulerGeometry.y}};
+  }
+});
+rulerSurface.addEventListener('contextmenu',e=>e.preventDefault());
+window.addEventListener('pointermove',e=>{
+  if(!rulerDrag)return;
+  if(rulerDrag.mode==='gesture'){
+    if(rulerPointers.has(e.pointerId))rulerPointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(rulerPointers.size<2)return;
+    const [a,b]=[...rulerPointers.values()],mid=pointerMidpoint(a,b);
+    rulerGeometry.angle=rulerDrag.origin.angle+pointerAngle(a,b)-rulerDrag.startAngle;
+    rulerGeometry.x=rulerDrag.origin.x+mid.x-rulerDrag.startMid.x;
+    rulerGeometry.y=rulerDrag.origin.y+mid.y-rulerDrag.startMid.y;
+  }else if(rulerDrag.pointerId===e.pointerId&&rulerDrag.mode==='move'){
+    rulerGeometry.x=rulerDrag.origin.x+e.clientX-rulerDrag.start.x;
+    rulerGeometry.y=rulerDrag.origin.y+e.clientY-rulerDrag.start.y;
+  }else if(rulerDrag.pointerId===e.pointerId&&rulerDrag.mode==='rotate'){
+    const angle=Math.atan2(e.clientY-rulerGeometry.y,e.clientX-rulerGeometry.x);
+    rulerGeometry.angle=rulerDrag.startRotation+angle-rulerDrag.startAngle;
+  }
+  updateRulerUI();
+});
+window.addEventListener('pointerup',e=>{
+  rulerPointers.delete(e.pointerId);
+  if(rulerDrag&&(rulerDrag.mode==='gesture'||rulerDrag.pointerId===e.pointerId))rulerDrag=null;
+});
+window.addEventListener('pointercancel',e=>{
+  rulerPointers.delete(e.pointerId);
+  if(rulerDrag&&(rulerDrag.mode==='gesture'||rulerDrag.pointerId===e.pointerId))rulerDrag=null;
+});
+window.addEventListener('resize',()=>{resize();positionToolChoices();});
+window.addEventListener('beforeunload',()=>{if(dirty&&db)saveToDB();});
+
+(async function init(){
+  updateToolUI();
+  updateThemeUI();
+  updateRulerUI();
+  resize();
+  try{
+    db=await openDB();
+    await loadLibrary();
+    restorePayload(null);
+    camera={x:canvasEl.clientWidth/2,y:canvasEl.clientHeight/2,zoom:DEFAULT_ZOOM};
+  }catch(error){
+    showCanvasLibrary();
+    createCanvasButton.disabled=true;
+    setStatus(`Local database unavailable · ${error.message}`);
+    requestRender();updateButtons();
+    return;
+  }
+  if(!window.supabase?.createClient){
+    showCanvasLibrary();
+    authMessage.textContent='Supabase could not load. Check your internet connection and reload.';
+    setStatus('Cloud sign-in library unavailable');
+    requestRender();updateButtons();
+    return;
+  }
+  try{
+    cloudClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+    cloudClient.auth.onAuthStateChange((_event,session)=>{authSession=session;});
+    const {data,error}=await cloudClient.auth.getSession();
+    if(error)throw error;
+    if(data.session){
+      await startCloudSession(data.session);
+      closeCanvasLibrary.disabled=!activeDocumentKey;
+    }else{
+      authSession=null;
+      showCanvasLibrary();
+      closeCanvasLibrary.disabled=true;
+      if(new URLSearchParams(location.search).has('room')){
+        authMessage.textContent='This room link is only a placeholder. Room access is not enabled; sign in to access your private canvases.';
+      }
+      setStatus('Sign in to sync your private canvases');
+    }
+  }catch(error){
+    showCanvasLibrary();
+    authMessage.textContent=`Could not connect to Supabase: ${error.message}`;
+    setStatus(`Sign-in unavailable · ${error.message}`);
+  }
+  requestRender();updateButtons();
+})();
+})();
+  </script>
+</body>
+</html>
