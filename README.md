@@ -32,32 +32,83 @@ create table if not exists public.canvases (
 alter table public.canvases enable row level security;
 
 grant select, insert, update, delete on public.canvases to authenticated;
+grant usage on schema public to anon, authenticated;
 
+drop policy if exists "Users can read their own canvases" on public.canvases;
 create policy "Users can read their own canvases"
   on public.canvases for select to authenticated
   using ((select auth.uid()) = owner_id);
 
+drop policy if exists "Users can create their own canvases" on public.canvases;
 create policy "Users can create their own canvases"
   on public.canvases for insert to authenticated
   with check ((select auth.uid()) = owner_id);
 
+drop policy if exists "Users can update their own canvases" on public.canvases;
 create policy "Users can update their own canvases"
   on public.canvases for update to authenticated
   using ((select auth.uid()) = owner_id)
   with check ((select auth.uid()) = owner_id);
 
+drop policy if exists "Users can delete their own canvases" on public.canvases;
 create policy "Users can delete their own canvases"
   on public.canvases for delete to authenticated
   using ((select auth.uid()) = owner_id);
+
+create unique index if not exists canvases_share_code_unique
+  on public.canvases (share_code)
+  where share_code is not null;
+
+create or replace function public.get_shared_canvas(p_share_code text)
+returns table (id text, name text, payload jsonb)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select c.id, c.name, c.payload
+  from public.canvases as c
+  where c.share_code = p_share_code
+    and p_share_code ~ '^[A-Fa-f0-9]{10,64}$'
+  limit 1;
+$$;
+
+create or replace function public.update_shared_canvas(
+  p_share_code text,
+  p_payload jsonb
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if pg_catalog.jsonb_typeof(p_payload) <> 'object'
+     or p_share_code !~ '^[A-Fa-f0-9]{10,64}$' then
+    raise exception 'Invalid shared canvas request';
+  end if;
+
+  update public.canvases
+  set payload = p_payload, updated_at = pg_catalog.now()
+  where share_code = p_share_code;
+
+  return found;
+end;
+$$;
+
+revoke all on function public.get_shared_canvas(text) from public;
+revoke all on function public.update_shared_canvas(text, jsonb) from public;
+grant execute on function public.get_shared_canvas(text) to anon, authenticated;
+grant execute on function public.update_shared_canvas(text, jsonb) to anon, authenticated;
 ```
 
-Row-level security restricts every table operation to the signed-in owner. Room codes are saved privately with each canvas, but room-link access is intentionally disabled: a link does not grant another user permission to read or edit a canvas.
+Run this complete SQL in **SQL Editor**, including the RPC functions, to enable room links. If the private `canvases` table is already set up, you can rerun the script: it replaces the owner policies and adds the room RPC functions. Table row-level security keeps the library private to its owner. The RPC functions expose only the canvas matching a high-entropy room code and allow editing that canvas's drawing payload. Anyone who obtains a room link can view and edit that room; treat the URL like a password. Remove its `share_code` from the row to revoke the link.
 
 ## Controls
 
 - Canvases: sign in, then enter your display name if prompted. Open Canvases to create a canvas, switch canvases, or view square previews. The empty library has a plus tile that creates a canvas, opens it, and asks for its name. Press and hold a canvas tile to select it; select multiple tiles to delete them, or select one to rename it.
 - Accounts: use **Continue with Google**. Sign out from the canvas library. On the first sign-in, canvases already stored in this browser are migrated to that Google account.
-- Share: create a link with an automatic room code. Until room access and multiplayer are implemented, the link is a placeholder and cannot be used by other people to view or edit the canvas.
+- Share: create a link with an automatic room code. People with the link can open and edit that canvas without access to the owner's other canvases. Use a public HTTPS-hosted app URL; localhost and file URLs cannot be opened by other people.
 - Draw: drag with mouse, finger, or stylus.
 - Paint tools: click the bottom-center tool circle to reveal the fixed tool row. Select a drawing tool, then click it again to open its settings. Pen, Marker, Highlighter, Calligraphy, and Flat Pencil keep their own size, color, and fill settings; Highlighter also has a transparency slider. Shader smudges colors from the canvas. New strokes keep their on-screen size as you zoom; older saved strokes keep their original zoom behavior.
 - Drawing from open settings: click the canvas to close settings without drawing, or drag to draw and close settings.

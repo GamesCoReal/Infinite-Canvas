@@ -7,8 +7,8 @@
   <title>Infinite Canvas</title>
   <style>
 *{box-sizing:border-box}
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111318;color:#e9edf4;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
-#app{position:relative;width:100%;height:100%;overflow:hidden}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:none;background:#111318;color:#e9edf4;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+#app{position:relative;width:100%;height:100%;overflow:hidden;overscroll-behavior:none}
 #canvas{display:block;width:100%;height:100%;touch-action:none;cursor:none;background-color:#f7f8fa}
 .tool-tray{--tool-size:56px;--tool-gap:8px;position:absolute;z-index:3;left:calc(50% - var(--tool-size)/2);bottom:22px;width:var(--tool-size);height:56px;overflow:visible}
 .tool-tray.expanded{--tool-size:48px;--tool-gap:6px;height:var(--tool-size);width:calc(50vw - 98px);overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
@@ -84,6 +84,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111318;col
 .canvas-library{position:absolute;inset:0;z-index:20;display:grid;place-items:center;padding:24px;background:#0d0f14eF;backdrop-filter:blur(10px)}
 .canvas-library[hidden]{display:none}
 .canvas-library-panel{width:min(920px,100%);max-height:min(90vh,900px);overflow:auto;padding:24px;border:1px solid #ffffff24;border-radius:18px;background:#171a22;color:#e9edf4;box-shadow:0 20px 70px #0008}
+.canvas-library-panel.auth-only{display:grid;place-items:center;width:min(380px,calc(100vw - 32px));aspect-ratio:1;max-height:calc(100vh - 32px);padding:28px}
 .canvas-library h1{margin:0;font-size:24px}
 .canvas-library p{color:#b9c0cd}
 .library-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
@@ -172,6 +173,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111318;col
     </div>
     <section id="toolSettings" class="tool-settings" aria-label="Tool settings" hidden>
       <h2 id="toolSettingsTitle">Pen settings</h2>
+      <div class="setting-row tool-type-setting"><span>Tool type</span><output id="toolTypeValue">Pen</output></div>
       <label id="colorSetting" class="setting-row" for="toolColor"><span>Color</span><input id="toolColor" type="color" value="#202124"></label>
       <label class="setting-row size-setting" for="toolSize"><span>Size</span><input id="toolSize" type="range" min="1" max="48" value="5"><output id="toolSizeValue">5</output></label>
       <div id="brushSizeControl" class="brush-size-control" role="slider" tabindex="0" aria-label="Brush size" aria-valuemin="1" aria-valuemax="48" aria-valuenow="5" title="Drag the circle edge up or down to change brush size">
@@ -277,12 +279,12 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111318;col
     <div id="shareOverlay" class="share-overlay" hidden>
       <section class="share-dialog" role="dialog" aria-modal="true" aria-labelledby="shareDialogTitle">
         <h2 id="shareDialogTitle">Canvas room link</h2>
-        <p>Room access is not enabled yet. This link contains an automatic room code, but it will not let other people view or edit the canvas until multiplayer access is implemented.</p>
+        <p>Anyone with this link can open and edit the canvas. Treat the link like a password and only share it with people you trust.</p>
         <label for="shareLinkInput">Room link</label>
         <input id="shareLinkInput" type="text" readonly>
         <div class="canvas-name-dialog-actions">
           <button id="closeShareDialog" class="library-button" type="button">Close</button>
-          <button id="copyShareLink" class="library-button primary" type="button">Copy link</button>
+          <button id="copyShareLink" class="library-button primary" type="button">Share link</button>
         </div>
       </section>
     </div>
@@ -300,6 +302,7 @@ const toolTray = document.getElementById('toolTray');
 const toolSettings = document.getElementById('toolSettings');
 const toolButtons = [...document.querySelectorAll('.tool-choice')];
 const toolSettingsTitle = document.getElementById('toolSettingsTitle');
+const toolTypeValue = document.getElementById('toolTypeValue');
 const colorSetting = document.getElementById('colorSetting');
 const fillSetting = document.getElementById('fillSetting');
 const transparencySetting = document.getElementById('transparencySetting');
@@ -328,6 +331,7 @@ const rulerEl = document.getElementById('ruler');
 const rulerSurface = document.getElementById('rulerSurface');
 const canvasMenuToggle = document.getElementById('canvasMenuToggle');
 const canvasLibrary = document.getElementById('canvasLibrary');
+const canvasLibraryPanel = document.querySelector('.canvas-library-panel');
 const nameSetup = document.getElementById('nameSetup');
 const displayNameForm = document.getElementById('displayNameForm');
 const displayNameInput = document.getElementById('displayNameInput');
@@ -360,7 +364,10 @@ const closeShareDialogButton = document.getElementById('closeShareDialog');
 const SUPABASE_URL = 'https://rsldrwnfgfworjpztcbt.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_1qcvF3fu2laGbwjeUF1obg_4dnSbE3V';
 const CLOUD_TABLE = 'canvases';
+const SHARED_CANVAS_READ_RPC = 'get_shared_canvas';
+const SHARED_CANVAS_UPDATE_RPC = 'update_shared_canvas';
 const TOOL_ORDER = ['pen','marker','highlighter','eraser','lasso','calligraphy','pencil','shader','ruler'];
+const TOOL_LABELS = {pen:'Pen',marker:'Marker',highlighter:'Highlighter',eraser:'Eraser',lasso:'Lasso',calligraphy:'Calligraphy pen',pencil:'Flat pencil',shader:'Shader',ruler:'Ruler'};
 const DRAWING_TOOLS = ['pen','marker','highlighter','eraser','calligraphy','pencil','shader'];
 const ROTATABLE_TOOLS = ['highlighter','calligraphy','pencil'];
 const MIN_ZOOM = 1e-9;
@@ -379,6 +386,8 @@ let cloudClient = null;
 let authSession = null;
 let cloudReady = false;
 let cloudSyncError = '';
+let sharedRoomCode = null;
+let sharedRoomName = '';
 let libraryData = {displayName:'',canvases:[]};
 let selectedCanvasIds = new Set();
 let canvasHoldTimer = null;
@@ -555,6 +564,24 @@ function saveToDB() {
       const tx=db.transaction(STORE,'readwrite');
       tx.objectStore(STORE).put(payload,activeDocumentKey);
       tx.oncomplete=async()=>{
+        if(sharedRoomCode){
+          try{
+            const {data:roomUpdated,error}=await cloudClient.rpc(SHARED_CANVAS_UPDATE_RPC,{
+              p_share_code:sharedRoomCode,
+              p_payload:payload
+            });
+            if(error)throw error;
+            if(roomUpdated!==true)throw new Error('This room link has been revoked.');
+            if(changeGeneration===savedGeneration){dirty=false;setStatus('Shared canvas saved');resolve(true);}
+            else{dirty=true;setStatus('New changes are waiting to sync');resolve(false);}
+          }catch(error){
+            dirty=true;setStatus(`Shared canvas save failed · ${error.message}`);
+            clearTimeout(saveTimer);
+            saveTimer=setTimeout(saveToDB,5000);
+            resolve(false);
+          }
+          return;
+        }
         if(authSession&&cloudReady){
           const entry=libraryData.canvases.find(item=>item.key===activeDocumentKey);
           if(!entry){dirty=true;setStatus('Cloud save failed · active canvas is missing from your library');resolve(false);return;}
@@ -617,6 +644,39 @@ async function upsertCloudCanvas(entry,payload){
     updated_at:new Date(payload.updatedAt||Date.now()).toISOString()
   },{onConflict:'owner_id,id'});
   if(error)throw error;
+}
+function storeDocument(key,payload){
+  return new Promise((resolve,reject)=>{
+    try{
+      const tx=db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).put(payload,key);
+      tx.oncomplete=()=>resolve(true);
+      tx.onerror=()=>reject(tx.error);
+    }catch(error){reject(error);}
+  });
+}
+async function openSharedRoom(code){
+  if(!/^[A-Fa-f0-9]{10,64}$/.test(code))throw new Error('This room link has an invalid code.');
+  const {data,error}=await cloudClient.rpc(SHARED_CANVAS_READ_RPC,{p_share_code:code});
+  if(error)throw error;
+  const row=Array.isArray(data)?data[0]:data;
+  if(!row||typeof row.id!=='string'||typeof row.name!=='string'||!row.payload||typeof row.payload!=='object'){
+    throw new Error('This room was not found or its link has been disabled.');
+  }
+  const documentKey=`shared:${code}`;
+  await storeDocument(documentKey,row.payload);
+  sharedRoomCode=code;
+  sharedRoomName=row.name;
+  activeDocumentKey=documentKey;
+  restorePayload(row.payload);
+  camera={x:canvasEl.clientWidth/2,y:canvasEl.clientHeight/2,zoom:DEFAULT_ZOOM};
+  dirty=false;selection=null;activeStroke=null;
+  shareCanvasButton.disabled=true;
+  closeCanvasLibrary.disabled=false;
+  canvasLibrary.hidden=true;
+  canvasMenuToggle.setAttribute('aria-expanded','false');
+  setStatus(`Opened shared canvas · ${row.name}`);
+  requestRender();
 }
 async function loadLibrary(){
   const saved=await readStoredValue(LIBRARY_KEY);
@@ -693,9 +753,6 @@ async function startCloudSession(session){
     showCanvasLibrary();
     closeCanvasLibrary.disabled=!activeDocumentKey;
     setStatus('Cloud sync ready');
-    if(new URLSearchParams(location.search).has('room')){
-      setStatus('Room links are not active yet; the room code does not grant canvas access.');
-    }
   }catch(error){
     cloudSyncError=`Cloud sync failed: ${error.message}`;
     cloudReady=false;
@@ -753,6 +810,7 @@ function showCanvasLibrary(){
   renderCanvasLibrary();
 }
 function renderCanvasLibrary(){
+  canvasLibraryPanel.classList.toggle('auth-only',!authSession);
   authPanel.hidden=Boolean(authSession);
   cloudSetupPanel.hidden=!authSession||cloudReady;
   if(!authSession){
@@ -990,6 +1048,9 @@ async function deleteSelectedCanvases(){
 function restorePayload(data) {
   strokes.clear();chunks.clear();largeStrokes.clear();undoStack=[];redoStack=[];
   strokeOrderDirty=true;
+  tool='pen';
+  toolSettings.hidden=true;
+  setTrayExpanded(false);
   darkMode=Boolean(data&&data.darkMode);
   settings={
     pen:{color:'#202124',size:5,fill:false},
@@ -1110,14 +1171,14 @@ function drawGrid() {
 }
 function drawStroke(stroke) {
   const pts=stroke.points;if(!pts.length)return;
-  const strokeColor=displayColor(stroke.color);
+  const strokeColor=stroke.color;
   const strokeScale=stroke.screenSize?1:camera.zoom;
   ctx.save();ctx.globalAlpha=stroke.opacity??1;ctx.strokeStyle=strokeColor;ctx.fillStyle=strokeColor;
   ctx.lineWidth=stroke.width*strokeScale;ctx.lineCap='round';ctx.lineJoin='round';
   if(stroke.tool==='shader'){
     for(const point of pts){
       const p=worldToScreen(point.x,point.y),radius=Math.max(1,stroke.width*strokeScale/2);
-      const color=displayColor(point.color||'#202124');
+      const color=point.color||'#202124';
       const gradient=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,radius);
       gradient.addColorStop(0,`${color}66`);gradient.addColorStop(.65,`${color}2b`);gradient.addColorStop(1,`${color}00`);
       ctx.fillStyle=gradient;ctx.beginPath();ctx.arc(p.x,p.y,radius,0,Math.PI*2);ctx.fill();
@@ -1197,7 +1258,7 @@ function drawBrushCursor() {
   const radius=Math.max(.5,width/2);
   if(tool!=='eraser'){
     ctx.save();ctx.beginPath();ctx.arc(cursorPosition.x,cursorPosition.y,radius,0,Math.PI*2);
-    ctx.lineWidth=1.5;ctx.strokeStyle=displayColor(currentSettings().color||'#202124');ctx.stroke();ctx.restore();return;
+    ctx.lineWidth=1.5;ctx.strokeStyle=currentSettings().color||'#202124';ctx.stroke();ctx.restore();return;
   }
   function drawRotatingNibPreview(position){
     const config=currentSettings();
@@ -1207,7 +1268,7 @@ function drawBrushCursor() {
     const angle=(config.rotation||0)*Math.PI/180;
     ctx.save();ctx.translate(screenPoint.x,screenPoint.y);ctx.rotate(angle);
     ctx.beginPath();ctx.ellipse(0,0,width/2,nibWidth/2,0,0,Math.PI*2);
-    ctx.fillStyle=displayColor(config.color||'#202124');ctx.fill();
+    ctx.fillStyle=config.color||'#202124';ctx.fill();
     ctx.lineWidth=1.5;ctx.strokeStyle=darkMode?'#fff':'#202124';ctx.stroke();
     ctx.beginPath();ctx.moveTo(-width/2,-nibWidth/2);ctx.lineTo(-width/2,nibWidth/2);
     ctx.strokeStyle=darkMode?'#202124':'#fff';ctx.lineWidth=1;ctx.stroke();
@@ -1422,7 +1483,7 @@ function finishSelectionTransform(){
 function sampleCanvasColor(point){
   const x=clamp(Math.round(point.x*dpr),0,canvasEl.width-1),y=clamp(Math.round(point.y*dpr),0,canvasEl.height-1);
   const [r,g,b]=ctx.getImageData(x,y,1,1).data;
-  return displayColor(`#${[r,g,b].map(value=>value.toString(16).padStart(2,'0')).join('')}`);
+  return `#${[r,g,b].map(value=>value.toString(16).padStart(2,'0')).join('')}`;
 }
 function render() {
   renderQueued=false;
@@ -1508,7 +1569,21 @@ function zoomAt(sx,sy,factor) {
   camera.x=sx-before.x*camera.zoom;camera.y=sy-before.y*camera.zoom;
   markCameraDirty();requestRender();
 }
+function beginCanvasPinch(){
+  const [a,b]=[...pointers.values()];
+  const midpoint=pointerMidpoint(a,b);
+  pinchStart={
+    distance:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),
+    midpoint
+  };
+  activeStroke=null;
+  pendingStrokeStart=null;
+  activeLasso=null;
+  selectionTransform=null;
+  pointerMode='pinch';
+}
 canvasEl.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='touch')e.preventDefault();
   if(e.button===2&&supportsRotation(tool)){
     e.preventDefault();canvasEl.setPointerCapture(e.pointerId);
     rotationPreviewPosition=eventPos(e);
@@ -1516,9 +1591,8 @@ canvasEl.addEventListener('pointerdown',e=>{
     pointerMode='tool-rotation';return;
   }
   canvasEl.setPointerCapture(e.pointerId);pointers.set(e.pointerId,eventPos(e));
-  if(pointers.size===2){
-    activeStroke=null;pendingStrokeStart=null;pointerMode='pinch';
-    const a=[...pointers.values()];pinchStart={distance:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y),zoom:camera.zoom,mid:{x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2},camera:{...camera}};
+  if(pointers.size>=2){
+    beginCanvasPinch();
     return;
   }
   const p=eventPos(e);lastPointer=p;
@@ -1534,6 +1608,7 @@ canvasEl.addEventListener('pointerdown',e=>{
   startStroke(p);
 });
 canvasEl.addEventListener('pointermove',e=>{
+  if(e.pointerType==='touch'&&pointers.has(e.pointerId))e.preventDefault();
   cursorPosition=eventPos(e);requestRender();
   if(toolRotationDrag&&toolRotationDrag.pointerId===e.pointerId){
     rotationPreviewPosition=cursorPosition;
@@ -1545,11 +1620,14 @@ canvasEl.addEventListener('pointermove',e=>{
   if(!pointers.has(e.pointerId))return;
   const p=cursorPosition;pointers.set(e.pointerId,p);
   if(pointers.size>=2&&pinchStart){
-    const a=[...pointers.values()],dist=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
-    const mid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};
-    const world=screenToWorld(pinchStart.mid.x,pinchStart.mid.y);
-    camera.zoom=clamp(pinchStart.zoom*(dist/Math.max(1,pinchStart.distance)),MIN_ZOOM,MAX_ZOOM);
-    camera.x=mid.x-world.x*camera.zoom;camera.y=mid.y-world.y*camera.zoom;
+    const [a,b]=[...pointers.values()];
+    const distance=Math.max(1,Math.hypot(a.x-b.x,a.y-b.y));
+    const midpoint=pointerMidpoint(a,b);
+    const world=screenToWorld(pinchStart.midpoint.x,pinchStart.midpoint.y);
+    camera.zoom=clamp(camera.zoom*(distance/pinchStart.distance),MIN_ZOOM,MAX_ZOOM);
+    camera.x=midpoint.x-world.x*camera.zoom;camera.y=midpoint.y-world.y*camera.zoom;
+    pinchStart.distance=distance;
+    pinchStart.midpoint=midpoint;
     markCameraDirty();requestRender();return;
   }
   if(pointerMode==='pan'&&lastPointer){panBy(p.x-lastPointer.x,p.y-lastPointer.y);lastPointer=p;}
@@ -1576,6 +1654,19 @@ function endPointer(e){
     toolRotationDrag=null;rotationPreviewPosition=null;markDirty();updateToolUI();
   }
   pointers.delete(e.pointerId);
+  if(pointerMode==='pinch'){
+    if(pointers.size>=2)beginCanvasPinch();
+    else if(pointers.size===1){
+      pinchStart=null;
+      pointerMode='pan';
+      lastPointer=[...pointers.values()][0];
+    }else{
+      pinchStart=null;
+      pointerMode=null;
+      lastPointer=null;
+    }
+    return;
+  }
   if(pointers.size<2)pinchStart=null;
   if(pointerMode==='draw'&&pointers.size===0)finishStroke();
   if(pointerMode==='draw-pending'&&pointers.size===0)pendingStrokeStart=null;
@@ -1684,7 +1775,7 @@ function updateTransparencyPreview(){
     }
   }
   preview.globalAlpha=1-Number(toolTransparencyInput.value)/100;
-  preview.strokeStyle=displayColor(settings.highlighter.color);
+  preview.strokeStyle=settings.highlighter.color;
   preview.lineWidth=Math.max(2,Math.min(14,settings.highlighter.size));
   preview.lineCap='round';
   preview.beginPath();
@@ -1700,7 +1791,7 @@ function updateBrushSizeControl(){
   const diameter=Math.max(4,size);
   brushSizeCircle.style.width=`${diameter}px`;
   brushSizeCircle.style.height=`${diameter}px`;
-  brushSizeCircle.style.backgroundColor=displayColor(config.color||'#8a8f99');
+  brushSizeCircle.style.backgroundColor=config.color||'#8a8f99';
   brushSizeCircle.style.setProperty('--brush-ring-color',darkMode?'#fff':'#202124');
   brushSizeControl.setAttribute('aria-valuenow',String(size));
   brushSizeControl.setAttribute('aria-valuetext',`${size} pixels`);
@@ -1727,7 +1818,7 @@ function updateToolUI(){
     button.setAttribute('aria-pressed',String(selected));
     button.setAttribute('aria-expanded',String(selected&&!toolSettings.hidden));
     const indicator=button.querySelector('.tool-color-indicator');
-    if(indicator&&settings[button.dataset.tool]?.color)indicator.style.backgroundColor=displayColor(settings[button.dataset.tool].color);
+    if(indicator&&settings[button.dataset.tool]?.color)indicator.style.backgroundColor=settings[button.dataset.tool].color;
   }
   positionToolChoices();
   const hasSettings=DRAWING_TOOLS.includes(tool);
@@ -1736,7 +1827,10 @@ function updateToolUI(){
   fillSetting.hidden=tool==='eraser'||tool==='shader'||tool==='lasso'||tool==='ruler';
   transparencySetting.hidden=tool!=='highlighter';
   rotationSetting.hidden=!supportsRotation(tool);
-  toolSettingsTitle.textContent=`${tool[0].toUpperCase()}${tool.slice(1)} settings`;
+  const toolName=TOOL_LABELS[tool]||tool;
+  toolSettingsTitle.textContent=`${toolName} settings`;
+  toolTypeValue.value=toolName;
+  toolTypeValue.textContent=toolName;
   if(config){
     if(config.color)toolColorInput.value=config.color;
     toolSizeInput.value=String(config.size);
@@ -1747,7 +1841,7 @@ function updateToolUI(){
       toolRotationInput.value=String(Math.round(normalizeAngle(config.rotation)));
       toolRotationValue.value=`${toolRotationInput.value}°`;
       rotationPreview.style.transform=`rotate(${config.rotation}deg)`;
-      rotationPreview.style.backgroundColor=displayColor(config.color||'#202124');
+      rotationPreview.style.backgroundColor=config.color||'#202124';
     }
   }
   if(tool==='highlighter'&&config){
@@ -1915,19 +2009,25 @@ cancelCanvasNameButton.onclick=()=>{canvasNameDialog.hidden=true;};
 shareCanvasButton.onclick=async()=>{
   const entry=libraryData.canvases.find(item=>item.key===activeDocumentKey);
   if(!entry||!authSession||!cloudReady)return;
+  if(!await saveToDB())return;
   const previousCode=entry.shareCode;
-  if(!entry.shareCode)entry.shareCode=makeShareCode();
   try{
+    if(!entry.shareCode)entry.shareCode=makeShareCode();
     const payload=await readStoredValue(entry.key);
     if(!payload)throw new Error('Canvas data is missing.');
     await writeLibrary();
     await upsertCloudCanvas(entry,payload);
     const link=new URL(location.href);
     link.searchParams.set('room',entry.shareCode);
+    link.hash='';
     shareLinkInput.value=link.href;
+    sharedRoomName=entry.name;
     shareOverlay.hidden=false;
     shareLinkInput.focus();
     shareLinkInput.select();
+    if(location.protocol==='file:'||['localhost','127.0.0.1','::1'].includes(location.hostname)){
+      setStatus('To share this room, host the app at a public HTTPS address first.');
+    }
   }catch(error){
     entry.shareCode=previousCode||'';
     try{await writeLibrary();}catch(storageError){setStatus(`Could not save room code: ${storageError.message}`);return;}
@@ -1936,20 +2036,26 @@ shareCanvasButton.onclick=async()=>{
 };
 copyShareLinkButton.onclick=async()=>{
   try{
-    await navigator.clipboard.writeText(shareLinkInput.value);
-    setStatus('Room link copied · access is not enabled yet');
+    if(navigator.share){
+      await navigator.share({title:sharedRoomName||'Infinite Canvas',text:'Join my shared canvas',url:shareLinkInput.value});
+      setStatus('Shared canvas link sent');
+    }else{
+      await navigator.clipboard.writeText(shareLinkInput.value);
+      setStatus('Shared canvas link copied');
+    }
   }catch(error){
+    if(error.name==='AbortError')return;
     shareLinkInput.focus();
     shareLinkInput.select();
-    setStatus(`Could not copy the room link: ${error.message}. The link is selected for manual copying.`);
+    setStatus(`Could not share the room link: ${error.message}. The link is selected for manual copying.`);
   }
 };
 closeShareDialogButton.onclick=()=>{shareOverlay.hidden=true;};
 shareOverlay.addEventListener('click',event=>{if(event.target===shareOverlay)shareOverlay.hidden=true;});
 function makeShareCode(){
-  const bytes=new Uint8Array(5);
-  if(globalThis.crypto?.getRandomValues)globalThis.crypto.getRandomValues(bytes);
-  else for(let i=0;i<bytes.length;i++)bytes[i]=Math.floor(Math.random()*256);
+  if(!globalThis.crypto?.getRandomValues)throw new Error('Secure room codes are unavailable in this browser.');
+  const bytes=new Uint8Array(32);
+  globalThis.crypto.getRandomValues(bytes);
   return Array.from(bytes,value=>value.toString(16).padStart(2,'0')).join('').toUpperCase();
 }
 saveLocationButton.onclick=saveCurrentLocation;
@@ -2042,16 +2148,23 @@ window.addEventListener('beforeunload',()=>{if(dirty&&db)saveToDB();});
     cloudClient.auth.onAuthStateChange((_event,session)=>{authSession=session;});
     const {data,error}=await cloudClient.auth.getSession();
     if(error)throw error;
-    if(data.session){
+    const roomCode=new URLSearchParams(location.search).get('room');
+    if(roomCode){
+      authSession=null;
+      try{
+        await openSharedRoom(roomCode);
+      }catch(roomError){
+        showCanvasLibrary();
+        authMessage.textContent=`Could not open shared canvas: ${roomError.message}`;
+        setStatus(`Could not open shared canvas · ${roomError.message}`);
+      }
+    }else if(data.session){
       await startCloudSession(data.session);
       closeCanvasLibrary.disabled=!activeDocumentKey;
     }else{
       authSession=null;
       showCanvasLibrary();
       closeCanvasLibrary.disabled=true;
-      if(new URLSearchParams(location.search).has('room')){
-        authMessage.textContent='This room link is only a placeholder. Room access is not enabled; sign in to access your private canvases.';
-      }
       setStatus('Sign in to sync your private canvases');
     }
   }catch(error){
