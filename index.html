@@ -138,12 +138,8 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:no
 .share-dialog h2{margin:0 0 8px;font-size:18px}
 .share-dialog p{color:#c8ceda;font-size:13px;line-height:1.5}
 .peer-status{min-height:1.4em;font-weight:600}
-.peer-mode-tabs{display:flex;gap:8px;margin:14px 0}
-.peer-panel{display:grid;gap:8px}
-.peer-panel[hidden]{display:none}
-.peer-panel label{margin-top:8px;color:#c8ceda;font-size:12px}
-.peer-panel textarea{width:100%;min-height:92px;resize:vertical;padding:10px;border:1px solid #ffffff30;border-radius:9px;background:#252a36;color:#f5f6fa;font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}
-.peer-panel button{justify-self:start}
+.share-dialog label{display:block;margin:14px 0 6px;color:#c8ceda;font-size:12px}
+.share-dialog input{width:100%;padding:10px;border:1px solid #ffffff30;border-radius:9px;background:#252a36;color:#f5f6fa;font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace}
 .canvas-library-hint{margin:0 0 10px;font-size:12px}
 .ruler{position:absolute;z-index:2;width:160vw;height:48px;pointer-events:none}
 .ruler[hidden]{display:none}
@@ -282,31 +278,13 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:no
     <div id="shareOverlay" class="share-overlay" hidden>
       <section class="share-dialog" role="dialog" aria-modal="true" aria-labelledby="shareDialogTitle">
         <h2 id="shareDialogTitle">Share this canvas</h2>
-        <p>WebRTC connects browsers directly. Exchange these full codes privately; they contain connection details and network addresses. A free STUN server helps establish direct connections, but some networks require TURN and will not connect without a relay.</p>
+        <p>Create a room link and send it to the people you want to draw with. The link expires one hour after the room is created. The host must stay online for guests to join.</p>
         <p id="peerStatus" class="peer-status" role="status">Not connected</p>
-        <div class="peer-mode-tabs" role="group" aria-label="Connection role">
-          <button id="hostModeTab" class="library-button primary" type="button" aria-pressed="true">Host</button>
-          <button id="guestModeTab" class="library-button" type="button" aria-pressed="false">Guest</button>
-        </div>
-        <section id="hostPeerPanel" class="peer-panel" aria-label="Host connection">
-          <button id="createOffer" class="library-button primary" type="button">Create invitation</button>
-          <label for="offerCode">Invitation code — send to guest</label>
-          <textarea id="offerCode" rows="5" readonly spellcheck="false"></textarea>
-          <button id="copyOfferCode" class="library-button" type="button" disabled>Copy invitation</button>
-          <label for="answerCode">Guest response code — paste here</label>
-          <textarea id="answerCode" rows="5" spellcheck="false" placeholder="Paste the guest's response code"></textarea>
-          <button id="connectAnswer" class="library-button primary" type="button" disabled>Connect</button>
-        </section>
-        <section id="guestPeerPanel" class="peer-panel" aria-label="Guest connection" hidden>
-          <label for="guestOfferCode">Host invitation code — paste here</label>
-          <textarea id="guestOfferCode" rows="5" spellcheck="false" placeholder="Paste the host's invitation code"></textarea>
-          <button id="createAnswer" class="library-button primary" type="button">Create response</button>
-          <label for="guestAnswerCode">Response code — send to host</label>
-          <textarea id="guestAnswerCode" rows="5" readonly spellcheck="false"></textarea>
-          <button id="copyAnswerCode" class="library-button" type="button" disabled>Copy response</button>
-        </section>
+        <label for="roomLink">Room link</label>
+        <input id="roomLink" type="text" readonly>
         <div class="canvas-name-dialog-actions">
-          <button id="disconnectPeer" class="library-button" type="button" hidden>Disconnect</button>
+          <button id="copyRoomLink" class="library-button primary" type="button" disabled>Copy link</button>
+          <button id="disconnectPeer" class="library-button" type="button" hidden>End room</button>
           <button id="closeShareDialog" class="library-button" type="button">Close</button>
         </div>
       </section>
@@ -371,19 +349,8 @@ const replaceDuplicateCanvasButton = document.getElementById('replaceDuplicateCa
 const shareCanvasButton = document.getElementById('shareCanvas');
 const shareOverlay = document.getElementById('shareOverlay');
 const peerStatus = document.getElementById('peerStatus');
-const hostModeTab = document.getElementById('hostModeTab');
-const guestModeTab = document.getElementById('guestModeTab');
-const hostPeerPanel = document.getElementById('hostPeerPanel');
-const guestPeerPanel = document.getElementById('guestPeerPanel');
-const createOfferButton = document.getElementById('createOffer');
-const offerCodeInput = document.getElementById('offerCode');
-const copyOfferCodeButton = document.getElementById('copyOfferCode');
-const answerCodeInput = document.getElementById('answerCode');
-const connectAnswerButton = document.getElementById('connectAnswer');
-const guestOfferCodeInput = document.getElementById('guestOfferCode');
-const createAnswerButton = document.getElementById('createAnswer');
-const guestAnswerCodeInput = document.getElementById('guestAnswerCode');
-const copyAnswerCodeButton = document.getElementById('copyAnswerCode');
+const roomLinkInput = document.getElementById('roomLink');
+const copyRoomLinkButton = document.getElementById('copyRoomLink');
 const disconnectPeerButton = document.getElementById('disconnectPeer');
 const closeShareDialogButton = document.getElementById('closeShareDialog');
 const TOOL_ORDER = ['pen','marker','highlighter','eraser','lasso','calligraphy','pencil','shader','ruler'];
@@ -406,14 +373,20 @@ let libraryData = {displayName:'',canvases:[]};
 let peerConnection = null;
 let peerChannel = null;
 let peerIsHost = false;
-let peerRole = 'host';
+let peerJoining = false;
 let peerSetupGeneration = 0;
 let peerReady = false;
 let peerPreviousDocument = null;
 let peerPreviousDocumentKey = null;
 let peerSendQueue = [];
+let peerSendChain = Promise.resolve();
 let peerTransfers = new Map();
 let peerTransferSequence = 0;
+let peerRoomUsers = new Set();
+let peerRoomId = null;
+let peerRoomExpiresAt = 0;
+let peerHostUserId = null;
+let peerExpiryTimer = null;
 let contextCanvasEntry = null;
 let canvasHoldTimer = null;
 let canvasNameDialogMode = 'create';
@@ -473,8 +446,8 @@ function setStatus(s) { statusEl.textContent = s; }
 function supportsRotation(name=tool) { return ROTATABLE_TOOLS.includes(name); }
 function normalizeAngle(degrees) { return ((degrees%360)+360)%360; }
 function updateShareButton(){
-  shareCanvasButton.disabled=!activeDocumentKey;
-  shareCanvasButton.textContent=peerReady?'Connected':'Share';
+  shareCanvasButton.disabled=!activeDocumentKey&&!peerConnection;
+  shareCanvasButton.textContent=peerReady?'Connected':peerConnection?'Room':'Share';
 }
 function displayColor(color,mode=darkMode) {
   if(!mode||typeof color!=='string'||!/^#[0-9a-f]{6}$/i.test(color))return color;
@@ -2108,88 +2081,32 @@ cancelCanvasNameButton.onclick=()=>{canvasNameDialog.hidden=true;};
 cancelDuplicateNameButton.onclick=()=>closeDuplicateNameDialog(true);
 keepBothCanvasesButton.onclick=keepBothWithSuffix;
 replaceDuplicateCanvasButton.onclick=replaceDuplicateCanvas;
-const PEER_STUN_SERVERS=[{urls:'stun:stun.l.google.com:19302'}];
+const ROOM_LIFETIME_MS=60*60*1000;
+const ROOM_APP_ID='com.tyler.infinitecanvas';
 const PEER_CHUNK_SIZE=12000;
 const PEER_MAX_TRANSFER_SIZE=24*1024*1024;
-function setPeerRole(role){
-  const host=role==='host';
-  if(peerRole!==role){
-    peerRole=role;
-    peerSetupGeneration++;
-  }
-  if(peerConnection){
-    if(peerIsHost===host)return;
-    endPeerSession('Previous connection setup cancelled.');
-  }
-  hostPeerPanel.hidden=!host;
-  guestPeerPanel.hidden=host;
-  hostModeTab.classList.toggle('primary',host);
-  guestModeTab.classList.toggle('primary',!host);
-  hostModeTab.setAttribute('aria-pressed',String(host));
-  guestModeTab.setAttribute('aria-pressed',String(!host));
-  setPeerStatus(host?'Create an invitation to host a canvas.':'Paste the host invitation to create a response.');
-}
 function setPeerStatus(message){peerStatus.textContent=message;}
-function peerSignal(description){
-  return JSON.stringify({type:description.type,sdp:description.sdp});
-}
-function parsePeerSignal(value,expectedType){
-  const text=value.trim();
-  if(!text)throw new Error('Paste the other person’s code first.');
-  if(text.length>PEER_MAX_TRANSFER_SIZE)throw new Error('This connection code is too large.');
-  let signal;
-  try{signal=JSON.parse(text);}
-  catch{throw new Error('That code is not valid. Copy the full code without editing it.');}
-  if(!signal||signal.type!==expectedType||typeof signal.sdp!=='string'||!signal.sdp.includes('a='))
-    throw new Error(`This is not a valid WebRTC ${expectedType} code.`);
-  return signal;
-}
-function waitForIceGathering(connection){
-  if(connection.iceGatheringState==='complete')return Promise.resolve();
-  return new Promise((resolve,reject)=>{
-    const finish=(error=null)=>{
-      clearTimeout(timeout);
-      connection.removeEventListener('icegatheringstatechange',check);
-      connection.removeEventListener('connectionstatechange',checkClosed);
-      if(error)reject(error);else resolve();
-    };
-    const check=()=>{
-      if(connection.iceGatheringState!=='complete')return;
-      finish();
-    };
-    const checkClosed=()=>{if(connection.connectionState==='closed')finish(new Error('Connection setup was cancelled.'));};
-    const timeout=setTimeout(()=>finish(new Error('ICE candidates did not finish gathering in time. Check your connection and try again.')),30000);
-    connection.addEventListener('icegatheringstatechange',check);
-    connection.addEventListener('connectionstatechange',checkClosed);
-    check();
-  });
-}
-function copyPeerCode(input,label){
-  input.focus();input.select();
-  if(navigator.clipboard?.writeText){
-    navigator.clipboard.writeText(input.value)
-      .then(()=>setPeerStatus(`${label} copied. Send it privately.`))
-      .catch(error=>setPeerStatus(`Copy failed: ${error.message}. The code is selected for manual copying.`));
-  }else{
-    setPeerStatus(`The ${label.toLowerCase()} is selected. Copy it and send it privately.`);
-  }
-}
 function flushPeerQueue(){
-  if(!peerChannel||peerChannel.readyState!=='open')return;
-  while(peerSendQueue.length&&peerChannel.bufferedAmount<512*1024){
-    try{peerChannel.send(peerSendQueue.shift());}
-    catch(error){setPeerStatus(`Could not send canvas updates: ${error.message}`);return;}
+  if(!peerChannel||!peerConnection)return;
+  while(peerSendQueue.length){
+    const item=peerSendQueue.shift();
+    const channel=peerChannel;
+    peerSendChain=peerSendChain
+      .then(()=>{
+        if(channel===peerChannel)return channel.send(item.message,item.target?{target:item.target}:undefined);
+      })
+      .catch(error=>setPeerStatus(`Could not send canvas updates: ${error.message}`));
   }
 }
-function peerSendMessage(message){
-  if(!peerChannel||peerChannel.readyState!=='open')return;
+function peerSendMessage(message,target=null){
+  if(!peerChannel||!peerConnection)return;
   const serialized=JSON.stringify(message);
   if(serialized.length>PEER_MAX_TRANSFER_SIZE){
     setPeerStatus('This canvas update is too large to send over the direct connection.');
     return;
   }
   if(serialized.length<=PEER_CHUNK_SIZE){
-    peerSendQueue.push(serialized);
+    peerSendQueue.push({message,target});
   }else{
     const id=`${Date.now()}-${++peerTransferSequence}`;
     const parts=[];
@@ -2200,10 +2117,158 @@ function peerSendMessage(message){
     }
     if(part)parts.push(part);
     for(let index=0;index<parts.length;index++){
-      peerSendQueue.push(JSON.stringify({type:'peer:chunk',id,index,count:parts.length,data:parts[index]}));
+      peerSendQueue.push({message:{type:'peer:chunk',id,index,count:parts.length,data:parts[index]},target});
     }
   }
   flushPeerQueue();
+}
+function parseRoomLink(){
+  const url=new URL(location.href);
+  const roomId=url.searchParams.get('room');
+  if(!roomId)return null;
+  const expiresAt=Number(url.searchParams.get('expires'));
+  if(!/^[a-f0-9]{32}$/i.test(roomId)||!Number.isSafeInteger(expiresAt))
+    throw new Error('This room link is incomplete or invalid.');
+  return{roomId,expiresAt};
+}
+function makeRoomId(){
+  if(!crypto?.getRandomValues)throw new Error('Secure room IDs are not supported in this browser.');
+  const bytes=new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes,value=>value.toString(16).padStart(2,'0')).join('');
+}
+function setRoomUrl(roomId,expiresAt){
+  const url=new URL(location.href);
+  url.searchParams.set('room',roomId);
+  url.searchParams.set('expires',String(expiresAt));
+  history.replaceState(null,'',url);
+  roomLinkInput.value=url.href;
+}
+function clearRoomUrl(roomId=peerRoomId){
+  const url=new URL(location.href);
+  if(roomId&&url.searchParams.get('room')!==roomId)return;
+  url.searchParams.delete('room');
+  url.searchParams.delete('expires');
+  history.replaceState(null,'',url);
+}
+async function createShareRoom(){
+  if(peerConnection){setPeerStatus('A room is already active.');return;}
+  if(!activeDocumentKey){setPeerStatus('Open a canvas before creating a room.');return;}
+  try{
+    if(!await saveToDB())throw new Error('The canvas could not be saved locally.');
+    const roomId=makeRoomId(),expiresAt=Date.now()+ROOM_LIFETIME_MS;
+    sessionStorage.setItem('infiniteCanvasHostRoom',roomId);
+    sessionStorage.setItem('infiniteCanvasHostCanvas',activeDocumentKey);
+    setRoomUrl(roomId,expiresAt);
+    copyRoomLinkButton.disabled=false;
+    await startPeerRoom(roomId,expiresAt,true);
+  }catch(error){
+    clearRoomUrl();
+    sessionStorage.removeItem('infiniteCanvasHostRoom');
+    sessionStorage.removeItem('infiniteCanvasHostCanvas');
+    setPeerStatus(`Could not create room: ${error.message}`);
+  }
+}
+async function startPeerRoom(roomId,expiresAt,isHost){
+  if(peerConnection||peerJoining)return;
+  if(expiresAt<=Date.now())throw new Error('This room link has expired. Ask the host for a new link.');
+  if(!window.isSecureContext||!window.RTCPeerConnection)
+    throw new Error('Room sharing requires HTTPS or localhost and WebRTC support.');
+  peerJoining=true;
+  const generation=++peerSetupGeneration;
+  peerIsHost=isHost;
+  peerReady=false;
+  peerRoomId=roomId;
+  peerRoomExpiresAt=expiresAt;
+  peerHostUserId=null;
+  peerRoomUsers.clear();
+  peerSendQueue=[];
+  peerSendChain=Promise.resolve();
+  peerTransfers.clear();
+  disconnectPeerButton.hidden=false;
+  copyRoomLinkButton.disabled=!isHost;
+  roomLinkInput.value=location.href;
+  setPeerStatus(isHost?'Room created. Waiting for guests to join…':'Joining the shared room…');
+  try{
+    if(!isHost){
+      if(!await saveToDB())throw new Error('The local canvas could not be saved.');
+      peerPreviousDocument=currentPayload();
+      peerPreviousDocumentKey=activeDocumentKey;
+    }
+    const {joinRoom}=await import('https://esm.run/trystero@0.26.0');
+    if(generation!==peerSetupGeneration)return;
+    const room=joinRoom({appId:ROOM_APP_ID,identity:'none'},roomId);
+    peerConnection=room;
+    const action=room.makeAction('canvas-v1');
+    peerChannel=action;
+    action.onMessage((message,{userId})=>{
+      if(generation!==peerSetupGeneration)return;
+      if(!peerIsHost&&message?.type==='document:init'&&!peerHostUserId)peerHostUserId=userId;
+      try{applyPeerMessage(message);}
+      catch(error){setPeerStatus(`Could not process a room update: ${error.message}`);}
+    });
+    room.onUserJoin(({userId})=>{
+      if(generation!==peerSetupGeneration)return;
+      peerRoomUsers.add(userId);
+      if(peerIsHost){
+        peerReady=true;
+        peerSendMessage({type:'document:init',payload:currentPayload()},userId);
+        setPeerStatus('Guest connected. Drawing is shared directly.');
+      }else{
+        if(!peerHostUserId)peerHostUserId=userId;
+        if(!peerReady)setPeerStatus('Host found. Loading the shared canvas…');
+      }
+      updateShareButton();
+    });
+    room.onUserLeave(({userId})=>{
+      if(generation!==peerSetupGeneration)return;
+      peerRoomUsers.delete(userId);
+      if(peerIsHost){
+        peerReady=peerRoomUsers.size>0;
+        setPeerStatus(peerReady?'A guest left. Waiting for other guests…':'Room is open. Waiting for guests to join…');
+        updateShareButton();
+      }else if(peerReady&&userId===peerHostUserId){
+        endPeerSession('The host left the room.');
+      }else if(!peerReady&&userId===peerHostUserId){
+        setPeerStatus('The host left before the canvas could load.');
+      }
+    });
+    room.onError(error=>{
+      if(generation===peerSetupGeneration)setPeerStatus(`Room connection error: ${error.message||error.code||'unknown error'}`);
+    });
+    peerExpiryTimer=setTimeout(()=>endPeerSession('Room expired one hour after it was created.'),expiresAt-Date.now());
+  }catch(error){
+    if(generation===peerSetupGeneration){
+      const room=peerConnection;
+      peerConnection=null;peerChannel=null;
+      if(room){
+        try{room.leave().catch(leaveError=>setPeerStatus(`Could not leave room cleanly: ${leaveError.message}`));}
+        catch(leaveError){setPeerStatus(`Could not leave room cleanly: ${leaveError.message}`);}
+      }
+      if(!isHost&&peerPreviousDocument){
+        restorePayload(peerPreviousDocument);
+        activeDocumentKey=peerPreviousDocumentKey;
+        peerPreviousDocument=null;peerPreviousDocumentKey=null;
+      }
+      peerIsHost=false;
+      peerRoomId=null;peerRoomExpiresAt=0;
+      disconnectPeerButton.hidden=true;
+      copyRoomLinkButton.disabled=true;
+      throw error;
+    }
+  }finally{
+    peerJoining=false;
+  }
+}
+async function copyRoomLink(){
+  roomLinkInput.focus();roomLinkInput.select();
+  if(!roomLinkInput.value){setPeerStatus('Create a room link first.');return;}
+  try{
+    await navigator.clipboard.writeText(roomLinkInput.value);
+    setPeerStatus('Room link copied. Send it to your guests.');
+  }catch(error){
+    setPeerStatus(`Copy failed: ${error.message}. The link is selected for manual copying.`);
+  }
 }
 function validRemoteStroke(stroke){
   return Boolean(stroke&&typeof stroke.id==='string'&&stroke.id.length>0&&stroke.id.length<=256&&
@@ -2246,16 +2311,19 @@ function applyPeerMessage(message){
     restorePayload(message.payload);
     activeDocumentKey=null;
     dirty=false;selection=null;activeStroke=null;
+    canvasLibrary.hidden=true;
+    canvasMenuToggle.setAttribute('aria-expanded','false');
+    canvasNameDialog.hidden=true;
     peerReady=true;
     peerSendMessage({type:'document:ready'});
-    setPeerStatus('Connected. Drawing is shared directly between you.');
+    setPeerStatus(`Connected. Room expires at ${new Date(peerRoomExpiresAt).toLocaleTimeString()}.`);
     setStatus('Connected to shared canvas');
     updateShareButton();requestRender();
     return;
   }
   if(message.type==='document:ready'){
     if(!peerIsHost)return;
-    setPeerStatus('Connected. Both people can draw together.');
+    setPeerStatus(`Connected. Room expires at ${new Date(peerRoomExpiresAt).toLocaleTimeString()}.`);
     setStatus('Connected to shared canvas');
     return;
   }
@@ -2310,167 +2378,57 @@ function applyPeerMessage(message){
     renderSavedLocations();markDirty();
   }
 }
-function setupPeerChannel(channel){
-  peerChannel=channel;
-  channel.bufferedAmountLowThreshold=256*1024;
-  channel.onbufferedamountlow=flushPeerQueue;
-  channel.onopen=()=>{
-    if(channel!==peerChannel)return;
-    if(peerIsHost){
-      peerReady=true;
-      peerSendMessage({type:'document:init',payload:currentPayload()});
-      setPeerStatus('Connected. Sending canvas to guest…');
-      updateShareButton();
-    }
-  };
-  channel.onmessage=event=>{
-    if(channel!==peerChannel)return;
-    try{applyPeerMessage(JSON.parse(event.data));}
-    catch(error){setPeerStatus(`Could not process a connection update: ${error.message}`);}
-  };
-  channel.onerror=()=>setPeerStatus('The direct connection reported a data-channel error.');
-  channel.onclose=()=>{if(channel===peerChannel)endPeerSession('Peer disconnected.');};
-}
-function createPeerConnection(isHost){
-  if(!window.RTCPeerConnection)throw new Error('This browser does not support WebRTC.');
-  if(!window.isSecureContext)throw new Error('WebRTC requires a secure website (HTTPS) or localhost.');
-  peerIsHost=isHost;
-  peerReady=false;
-  peerSendQueue=[];
-  peerTransfers.clear();
-  peerConnection=new RTCPeerConnection({iceServers:PEER_STUN_SERVERS});
-  disconnectPeerButton.hidden=false;
-  const connection=peerConnection;
-  connection.onconnectionstatechange=()=>{
-    if(connection!==peerConnection)return;
-    if(connection.connectionState==='failed')
-      setPeerStatus('Connection failed. This network may require a TURN relay; this app uses STUN only.');
-    else if(connection.connectionState==='disconnected')
-      setPeerStatus('Connection interrupted. Waiting for the network to recover…');
-  };
-  connection.oniceconnectionstatechange=()=>{
-    if(connection===peerConnection&&connection.iceConnectionState==='failed')
-      setPeerStatus('Could not establish a direct route. Some Wi-Fi, mobile, school, or work networks block STUN-only connections.');
-  };
-  return connection;
-}
-async function createHostOffer(){
-  if(peerConnection){setPeerStatus('Disconnect from the current peer before creating another invitation.');return;}
-  const setupGeneration=peerSetupGeneration;
-  createOfferButton.disabled=true;
-  offerCodeInput.value='Gathering direct-connection details…';
-  let connection=null;
-  try{
-    if(!await saveToDB())throw new Error('The canvas could not be saved locally.');
-    if(setupGeneration!==peerSetupGeneration)return;
-    if(peerConnection)endPeerSession('Previous connection closed.');
-    connection=createPeerConnection(true);
-    const channel=connection.createDataChannel('infinite-canvas',{ordered:true});
-    setupPeerChannel(channel);
-    const offer=await connection.createOffer();
-    await connection.setLocalDescription(offer);
-    await waitForIceGathering(connection);
-    if(connection!==peerConnection||setupGeneration!==peerSetupGeneration)return;
-    offerCodeInput.value=peerSignal(connection.localDescription);
-    copyOfferCodeButton.disabled=false;
-    connectAnswerButton.disabled=false;
-    setPeerStatus('Invitation ready. Send it privately to one guest.');
-  }catch(error){
-    if(setupGeneration!==peerSetupGeneration||connection&&connection!==peerConnection)return;
-    offerCodeInput.value='';
-    copyOfferCodeButton.disabled=true;
-    endPeerSession(`Could not create invitation: ${error.message}`);
-  }finally{if(setupGeneration===peerSetupGeneration&&(!connection||connection===peerConnection))createOfferButton.disabled=Boolean(peerConnection);}
-}
-async function createGuestAnswer(){
-  if(peerConnection){setPeerStatus('Disconnect from the current peer before joining another.');return;}
-  const setupGeneration=peerSetupGeneration;
-  createAnswerButton.disabled=true;
-  guestAnswerCodeInput.value='Gathering direct-connection details…';
-  let connection=null;
-  try{
-    const offer=parsePeerSignal(guestOfferCodeInput.value,'offer');
-    if(setupGeneration!==peerSetupGeneration)return;
-    if(peerConnection)endPeerSession('Previous connection closed.');
-    if(!await saveToDB())throw new Error('The local canvas could not be saved.');
-    peerPreviousDocument=currentPayload();
-    peerPreviousDocumentKey=activeDocumentKey;
-    connection=createPeerConnection(false);
-    connection.ondatachannel=event=>setupPeerChannel(event.channel);
-    await connection.setRemoteDescription(offer);
-    const answer=await connection.createAnswer();
-    await connection.setLocalDescription(answer);
-    await waitForIceGathering(connection);
-    if(connection!==peerConnection||setupGeneration!==peerSetupGeneration)return;
-    guestAnswerCodeInput.value=peerSignal(connection.localDescription);
-    copyAnswerCodeButton.disabled=false;
-    setPeerStatus('Response ready. Send it privately to the host, then wait for connection.');
-  }catch(error){
-    if(setupGeneration!==peerSetupGeneration||connection&&connection!==peerConnection)return;
-    guestAnswerCodeInput.value='';
-    endPeerSession(`Could not create response: ${error.message}`);
-  }finally{if(setupGeneration===peerSetupGeneration&&(!connection||connection===peerConnection))createAnswerButton.disabled=Boolean(peerConnection);}
-}
-async function connectToGuest(){
-  if(!peerConnection||!peerIsHost){setPeerStatus('Create an invitation first.');return;}
-  connectAnswerButton.disabled=true;
-  try{
-    const answer=parsePeerSignal(answerCodeInput.value,'answer');
-    await peerConnection.setRemoteDescription(answer);
-    setPeerStatus('Answer accepted. Connecting directly…');
-  }catch(error){
-    setPeerStatus(`Could not connect: ${error.message}`);
-    connectAnswerButton.disabled=false;
-  }
-}
-function endPeerSession(message='Disconnected.'){
-  const connection=peerConnection,channel=peerChannel,wasGuest=Boolean(peerPreviousDocument);
+function endPeerSession(message='Room ended.'){
+  const room=peerConnection,roomId=peerRoomId,wasHost=peerIsHost;
+  const wasGuest=peerPreviousDocument!==null;
   peerConnection=null;peerChannel=null;peerReady=false;peerSendQueue=[];
+  peerSendChain=Promise.resolve();peerRoomUsers.clear();
+  peerRoomId=null;peerRoomExpiresAt=0;peerHostUserId=null;peerSetupGeneration++;
+  clearTimeout(peerExpiryTimer);peerExpiryTimer=null;
   for(const transfer of peerTransfers.values())clearTimeout(transfer.timer);
   peerTransfers.clear();
-  if(channel){channel.onclose=null;channel.onmessage=null;channel.onopen=null;try{channel.close();}catch{}}
-  if(connection){
-    connection.onconnectionstatechange=null;connection.oniceconnectionstatechange=null;connection.ondatachannel=null;
-    try{connection.close();}catch{}
+  if(room){
+    try{room.leave().catch(error=>setPeerStatus(`Could not leave room cleanly: ${error.message}`));}
+    catch(error){setPeerStatus(`Could not leave room cleanly: ${error.message}`);}
   }
-  if(wasGuest&&peerPreviousDocument){
+  if(wasGuest){
     restorePayload(peerPreviousDocument);
     activeDocumentKey=peerPreviousDocumentKey;
     dirty=false;selection=null;activeStroke=null;
     peerPreviousDocument=null;peerPreviousDocumentKey=null;
     requestRender();
+    if(!activeDocumentKey)showCanvasLibrary();
   }
-  if(peerIsHost&&dirty)saveToDB();
+  clearRoomUrl(roomId);
+  if(wasHost){
+    if(dirty)saveToDB();
+    if(sessionStorage.getItem('infiniteCanvasHostRoom')===roomId){
+      sessionStorage.removeItem('infiniteCanvasHostRoom');
+      sessionStorage.removeItem('infiniteCanvasHostCanvas');
+    }
+  }
   peerIsHost=false;
-  updateShareButton();
-  hostModeTab.disabled=false;guestModeTab.disabled=false;
-  createOfferButton.disabled=false;createAnswerButton.disabled=false;
-  copyOfferCodeButton.disabled=true;copyAnswerCodeButton.disabled=true;connectAnswerButton.disabled=true;
   disconnectPeerButton.hidden=true;
+  disconnectPeerButton.textContent='End room';
+  copyRoomLinkButton.disabled=true;
+  roomLinkInput.value='';
+  updateShareButton();
   setPeerStatus(message);
 }
 shareCanvasButton.onclick=async()=>{
-  if(!activeDocumentKey)return;
   shareOverlay.hidden=false;
   disconnectPeerButton.hidden=!peerConnection;
   if(peerConnection){
-    setPeerRole(peerIsHost?'host':'guest');
-    setPeerStatus(peerReady?'Connected. Both people can draw together.':'Connection setup in progress…');
-  }else{
-    if(peerRole==='host')await createHostOffer();
-    else setPeerStatus('Paste the host invitation and create your response.');
+    roomLinkInput.value=location.href;
+    copyRoomLinkButton.disabled=!peerIsHost;
+    disconnectPeerButton.textContent=peerIsHost?'End room':'Leave room';
+    setPeerStatus(peerReady?'Connected. Drawing is shared directly.':'Waiting for peers in the room…');
+    return;
   }
+  await createShareRoom();
 };
-hostModeTab.disabled=Boolean(peerConnection);
-guestModeTab.disabled=Boolean(peerConnection);
-hostModeTab.onclick=()=>setPeerRole('host');
-guestModeTab.onclick=()=>setPeerRole('guest');
-createOfferButton.onclick=createHostOffer;
-createAnswerButton.onclick=createGuestAnswer;
-connectAnswerButton.onclick=connectToGuest;
-copyOfferCodeButton.onclick=()=>copyPeerCode(offerCodeInput,'Invitation');
-copyAnswerCodeButton.onclick=()=>copyPeerCode(guestAnswerCodeInput,'Response');
-disconnectPeerButton.onclick=()=>endPeerSession();
+copyRoomLinkButton.onclick=copyRoomLink;
+disconnectPeerButton.onclick=()=>endPeerSession('Room ended.');
 closeShareDialogButton.onclick=()=>{shareOverlay.hidden=true;};
 shareOverlay.addEventListener('click',event=>{if(event.target===shareOverlay)shareOverlay.hidden=true;});
 saveLocationButton.onclick=saveCurrentLocation;
@@ -2555,6 +2513,38 @@ window.addEventListener('beforeunload',()=>{if(dirty&&db)saveToDB();});
   setStatus('Ready · canvases are stored in this browser');
   updateShareButton();
   requestRender();updateButtons();
+  let roomInfo;
+  try{roomInfo=parseRoomLink();}
+  catch(error){
+    setStatus(error.message);
+    shareOverlay.hidden=false;
+    setPeerStatus(error.message);
+    return;
+  }
+  if(roomInfo){
+    shareOverlay.hidden=false;
+    roomLinkInput.value=location.href;
+    if(roomInfo.expiresAt<=Date.now()){
+      clearRoomUrl(roomInfo.roomId);
+      setPeerStatus('This room link has expired. Ask the host for a new link.');
+      return;
+    }
+    const isHost=sessionStorage.getItem('infiniteCanvasHostRoom')===roomInfo.roomId;
+    if(isHost){
+      const canvasKey=sessionStorage.getItem('infiniteCanvasHostCanvas');
+      const canvasEntry=libraryData.canvases.find(entry=>entry.key===canvasKey);
+      if(!canvasEntry){
+        setPeerStatus('The host canvas could not be found in this browser.');
+        return;
+      }
+      await activateCanvas(canvasEntry.id);
+    }
+    try{await startPeerRoom(roomInfo.roomId,roomInfo.expiresAt,isHost);}
+    catch(error){
+      clearRoomUrl(roomInfo.roomId);
+      setPeerStatus(`Could not join room: ${error.message}`);
+    }
+  }
 })();
 })();
   </script>
